@@ -1,0 +1,52 @@
+{
+  "name": "fexios",
+  "version": "0.1.0",
+  "description": "Fetch based HTTP client with similar API to axios for browser and Node.js",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "browser": "./dist/index.umd.js",
+  "module": "./dist/index.mjs",
+  "files": [
+    "dist",
+    "lib"
+  ],
+  "scripts": {
+    "test": "mocha test/**/*.spec.ts",
+    "clean": "rimraf dist lib",
+    "build": "npm run clean && tsc --module commonjs && vite build",
+    "prepublish": "npm run build"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  },
+  "keywords": [
+    "fetch",
+    "ajax",
+    "http",
+    "promise",
+    "hookable",
+    "node",
+    "browser",
+    "axios"
+  ],
+  "author": "dragon-fish <dragon-fish@qq.com>",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/chai": "^4.3.5",
+    "@types/chai-as-promised": "^7.1.5",
+    "@types/formidable": "^3.4.0",
+    "@types/mocha": "^10.0.1",
+    "@types/node": "^18",
+    "chai": "^4.3.7",
+    "chai-as-promised": "^7.1.1",
+    "dotenv": "^16.3.1",
+    "esbuild-register": "^3.4.2",
+    "mocha": "^10.2.0",
+    "rimraf": "^5.0.1",
+    "tslib": "^2.6.0",
+    "tsx": "^3.12.7",
+    "typescript": "^5.1.6",
+    "vite": "^4.4.4",
+    "vite-plugin-dts": "^3.3.0"
+  }
+}
