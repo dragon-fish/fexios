@@ -14,6 +14,7 @@ export class Fexios {
   }
   readonly DEFAULT_CONFIGS: FexiosConfigs = {
     baseURL: '',
+    timeout: 60 * 1000,
     credentials: 'same-origin',
     headers: {
       'content-type': 'application/json; charset=UTF-8',
@@ -136,10 +137,18 @@ export class Fexios {
       ;(ctx.headers as any)['content-type'] = 'application/json; charset=UTF-8'
     }
 
-    const rawRequest = new Request(ctx.url, requestInit)
+    const abortController = ctx.abortController || new AbortController()
+    const rawRequest = new Request(ctx.url, {
+      ...requestInit,
+      signal: abortController.signal,
+    })
     ctx.rawRequest = rawRequest
 
     ctx = await this.emit('beforeRequest', ctx)
+
+    setTimeout(() => {
+      abortController.abort()
+    }, ctx.timeout || this.baseConfigs.timeout || 60 * 1000)
 
     const rawResponse = await fetch(ctx.rawRequest!).catch((err) => {
       throw new FexiosError('NETWORK_ERROR', err.message, ctx)
@@ -333,19 +342,16 @@ if (typeof window !== 'undefined') {
 export type AwaitAble<T = unknown> = Promise<T> | T
 export type FexiosConfigs = {
   baseURL: string
+  timeout: number
   query: Record<string, string | number | boolean> | URLSearchParams
   headers: Record<string, string> | Headers
   credentials: 'omit' | 'same-origin' | 'include'
   responseType: 'json' | 'blob' | 'text'
 }
-export interface FexiosRequestOptions {
-  baseURL?: string
+export interface FexiosRequestOptions extends FexiosConfigs {
   method?: FexiosMethods
-  credentials?: 'omit' | 'same-origin' | 'include'
-  headers?: Record<string, string> | Headers
-  query?: Record<string, string | number | boolean> | URLSearchParams
   body?: Record<string, any> | string | FormData | URLSearchParams
-  responseType?: 'json' | 'blob' | 'text'
+  abortController?: AbortController
 }
 export interface FexiosContext<T = any> extends FexiosRequestOptions {
   url: string
@@ -365,9 +371,6 @@ export type FexiosResponse<T = any> = {
 }
 export type FexiosHook<C = unknown> = (context: C) => AwaitAble<C | false>
 export type FexiosEvents = 'beforeInit' | 'beforeRequest' | 'afterResponse'
-export type FexiosEventsMap = {
-  init: FexiosHook<FexiosConfigs>[]
-}
 export type FexiosInterceptors = {
   request: {
     use: <C = FexiosContext>(hook: FexiosHook<C>, prepend?: boolean) => Fexios
