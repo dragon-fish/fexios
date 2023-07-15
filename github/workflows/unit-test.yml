@@ -1,0 +1,33 @@
+name: Unit test for Fexios
+on:
+  push:
+    branches: [master, dev, actions]
+  pull_request:
+    branches: [master, dev, actions]
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  test:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Set Node Version
+        uses: actions/setup-node@v2
+
+      - name: Init deps
+        run: |
+          npm i -g pnpm
+          pnpm i
+
+      - name: Run build
+        run: |
+          pnpm build
+
+      - name: Run test
+        run: |
+          pnpm test
