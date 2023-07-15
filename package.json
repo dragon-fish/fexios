@@ -31,6 +31,14 @@
   ],
   "author": "dragon-fish <dragon-fish@qq.com>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dragon-fish/fexios.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dragon-fish/fexios/issues"
+  },
+  "homepage": "https://github.com/dragon-fish/fexios#readme",
   "devDependencies": {
     "@types/chai": "^4.3.5",
     "@types/chai-as-promised": "^7.1.5",
