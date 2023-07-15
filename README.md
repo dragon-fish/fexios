@@ -11,13 +11,16 @@ Fetch based HTTP client with similar API to axios for browser and Node.js
 
 ## 特色功能 Features
 
-- [x] Native fetch API (supports the Promise API)
-- [x] Hookable (intercept request and response)
-- [x] Automatic transform request and response data
-- [x] Automatic transforms for JSON data
-- [x] Instance extendable
+- [x] 🤯 Native fetch API (supports the Promise API)
+- [x] 🤫 Method shortcuts (`fexios.post()`)
+- [x] 🔗 Hooks (intercept request and response)
+- [x] 😏 Automatic transform request and response data
+- [x] 😏 Automatic transforms for JSON data
+- [x] 🤩 Instances with custom defaults
+- [x] 🫡 Instance extendable
+- [x] 😍 Fricking tiny size: `index.umd.js  4.56 kB │ gzip: 2.01 kB │ map: 17.06 kB`
 
-## 安装/Installation
+## 安装 Installation
 
 **包管理器/Using package manager**
 
@@ -69,7 +72,7 @@ import('https://unpkg.com/fexios?module').then(({ createFexios }) => {
 </script>
 ```
 
-## 使用方法/Usage
+## 使用方法 Usage
 
 You can find some sample code snippets [here](test/).
 
@@ -156,7 +159,7 @@ And common request methods aliases:
 - fexios.put(url[, data[, config]])
 - fexios.patch(url[, data[, config]])
 
-## Hooks
+## 钩子 Hooks
 
 ```ts
 export interface FexiosContext<T = any> extends FexiosRequestOptions {
@@ -198,6 +201,20 @@ fexios.on('beforeRequest', async (ctx) => {
 ```
 
 </details>
+
+### interceptors
+
+Oh, this is mimicked from axios. Just sweet sugar.
+
+```ts
+// They are same
+fexios.on('beforeRequest', async (ctx) => {})
+fexios.interceptors.request.use((ctx) =>  {})
+
+// Bro, they are just same
+fexios.on('afterResponse', async (ctx) => {})
+fexios.interceptors.response.use((ctx) => {})
+```
 
 ---
 
