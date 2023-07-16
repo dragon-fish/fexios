@@ -146,7 +146,7 @@ export class Fexios {
 
     ctx = await this.emit('beforeRequest', ctx)
 
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       abortController.abort()
     }, ctx.timeout || this.baseConfigs.timeout || 60 * 1000)
 
@@ -154,6 +154,7 @@ export class Fexios {
       throw new FexiosError('NETWORK_ERROR', err.message, ctx)
     })
 
+    clearTimeout(timer)
     ctx.rawResponse = rawResponse
     ctx.response = await createFexiosResponse(rawResponse, ctx.responseType)
     ctx.data = ctx.response.data
