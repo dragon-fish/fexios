@@ -22,7 +22,7 @@ Fetch based HTTP client with similar API to axios for browser and Node.js
 
 ## 安装 Installation
 
-**包管理器/Using package manager**
+**包管理器 Using package manager**
 
 ```sh
 # Node Package Manager
@@ -47,7 +47,7 @@ const fexios = new Fexios(/* options */)
 const fexios = Fexios.create(/* options */)
 ```
 
-**在浏览器中直接使用/Use directly in the browser**
+**在浏览器中直接使用 Use directly in the browser**
 
 - JS Module
 
@@ -71,6 +71,16 @@ import('https://unpkg.com/fexios?module').then(({ createFexios }) => {
   const fexios = createFexios(/* options */)
 </script>
 ```
+
+## 兼容性 Compatibility
+
+Refer: https://developer.mozilla.org/docs/Web/API/Fetch_API
+
+| Chrome | Edge | Firefox | Opera | Safari          | Node.js                |
+| ------ | ---- | ------- | ----- | --------------- | ---------------------- |
+| 42     | 14   | 39      | 29    | 10.1 (iOS 10.3) | ^16.15.0 \|\| >=18.0.0 |
+
+\* Abort signal requires higher version.
 
 ## 使用方法 Usage
 
@@ -134,11 +144,19 @@ export interface FexiosRequestOptions {
 
 </details>
 
-**Response**
+**returns {FexiosFinalContext}**
 
 ```ts
+export type FexiosFinalContext<T = any> = Omit<
+  FexiosContext<T>,
+  'rawResponse' | 'response' | 'data' | 'headers'
+> & {
+  rawResponse: Response
+  response: FexiosResponse<T>
+  headers: Headers
+  data: T
+}
 export type FexiosResponse<T = any> = {
-  rawRequest: Request
   rawResponse: Response
   ok: boolean
   status: number
@@ -209,7 +227,7 @@ Oh, this is mimicked from axios. Just sweet sugar.
 ```ts
 // They are same
 fexios.on('beforeRequest', async (ctx) => {})
-fexios.interceptors.request.use((ctx) =>  {})
+fexios.interceptors.request.use((ctx) => {})
 
 // Bro, they are just same
 fexios.on('afterResponse', async (ctx) => {})
