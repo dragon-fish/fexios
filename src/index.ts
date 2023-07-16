@@ -71,13 +71,7 @@ export class Fexios {
   async request<T = any>(
     url: string | URL,
     options?: Partial<FexiosRequestOptions>
-  ): Promise<
-    Omit<FexiosContext, 'data' | 'response' | 'rawResponse'> & {
-      data: T
-      response: FexiosResponse<T>
-      rawResponse: Response
-    }
-  > {
+  ): Promise<FexiosFinalContext<T>> {
     let ctx: FexiosContext = (options = options || {}) as any
     ctx.url = url.toString()
     ctx = await this.emit('beforeInit', ctx)
@@ -158,6 +152,7 @@ export class Fexios {
     ctx.rawResponse = rawResponse
     ctx.response = await createFexiosResponse(rawResponse, ctx.responseType)
     ctx.data = ctx.response.data
+    ctx.headers = ctx.response.headers
 
     return this.emit('afterResponse', ctx) as any
   }
@@ -270,13 +265,11 @@ export class FexiosError extends Error {
     super(message)
   }
 }
-export class FexiosResponseError<T> extends Error {
+export class FexiosResponseError<T> extends FexiosError {
   name = 'FexiosResponseError'
-  code: string
 
   constructor(message: string, public response: FexiosResponse<T>) {
-    super(message)
-    this.code = response.statusText
+    super(response.statusText, message)
   }
 }
 
@@ -361,6 +354,14 @@ export interface FexiosContext<T = any> extends FexiosRequestOptions {
   response?: FexiosResponse
   data?: T
 }
+export type FexiosFinalContext<T = any> = Omit<
+  FexiosContext<T>,
+  'rawResponse' | 'response' | 'data'
+> & {
+  rawResponse: Response
+  response: FexiosResponse<T>
+  data: T
+}
 export type FexiosResponse<T = any> = {
   rawResponse: Response
   ok: boolean
@@ -399,9 +400,9 @@ export type FexiosMethods =
 type FexiosShortcutMethodWithoutBody = <T = any>(
   url: string | URL,
   options?: Partial<FexiosRequestOptions>
-) => Promise<FexiosResponse<T>>
+) => Promise<FexiosFinalContext<T>>
 type FexiosShortcutMethodWithBody = <T = any>(
   url: string | URL,
   body: Record<string, any> | string | URLSearchParams | FormData,
   options?: Partial<FexiosRequestOptions>
-) => Promise<FexiosResponse<T>>
+) => Promise<FexiosFinalContext<T>>

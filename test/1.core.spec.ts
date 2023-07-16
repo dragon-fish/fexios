@@ -23,32 +23,37 @@ describe('Fexios Core', () => {
     })
     const fexiosWithQueryInit = fexios.extends({
       query: {
-        postId: '1',
+        one: '001',
+        two: '002',
       },
     })
 
     // baseOptions
     const { data: data1 } = await fexiosWithQueryInit.get<HttpBinEcho>('/get')
-    expect(data1.args.postId).to.equal('1')
+    expect(data1.args.one).to.equal('001')
 
     // requestOptions
     const { data: data2 } = await fexios.get<HttpBinEcho>('/get', {
       query: {
-        postId: '2',
+        one: '111',
       },
     })
-    expect(data2.args.postId).to.equal('2')
+    expect(data2.args.one).to.equal('111')
 
     // requestOptions > urlParams > baseOptions
     const { data: data3 } = await fexiosWithQueryInit.get<HttpBinEcho>(
-      '/get?postId=2',
+      '/get?two=222',
       {
         query: {
-          postId: '3',
+          three: '333',
         },
       }
     )
-    expect(data3.args.postId).to.equal('3')
+    expect(data3.args).to.deep.equal({
+      one: '001',
+      two: '222',
+      three: '333',
+    })
   })
 
   it('POST with JSON body', async () => {
