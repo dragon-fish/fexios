@@ -56,5 +56,8 @@
     "typescript": "^5.1.6",
     "vite": "^4.4.4",
     "vite-plugin-dts": "^3.3.0"
+  },
+  "engines": {
+    "node": "^16.15.0 || >=18.0.0"
   }
 }
