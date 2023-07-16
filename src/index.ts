@@ -356,10 +356,11 @@ export interface FexiosContext<T = any> extends FexiosRequestOptions {
 }
 export type FexiosFinalContext<T = any> = Omit<
   FexiosContext<T>,
-  'rawResponse' | 'response' | 'data'
+  'rawResponse' | 'response' | 'data' | 'headers'
 > & {
   rawResponse: Response
   response: FexiosResponse<T>
+  headers: Headers
   data: T
 }
 export type FexiosResponse<T = any> = {
