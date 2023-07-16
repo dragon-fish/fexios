@@ -131,14 +131,13 @@ export class Fexios {
       ;(ctx.headers as any)['content-type'] = 'application/json; charset=UTF-8'
     }
 
+    ctx = await this.emit('beforeRequest', ctx)
     const abortController = ctx.abortController || new AbortController()
     const rawRequest = new Request(ctx.url, {
       ...requestInit,
       signal: abortController.signal,
     })
     ctx.rawRequest = rawRequest
-
-    ctx = await this.emit('beforeRequest', ctx)
 
     const timer = setTimeout(() => {
       abortController.abort()
