@@ -20,12 +20,24 @@ export type Comment = {
   body: string
 }
 
-export type HttpBinEcho = {
+export type PostmanEcho = {
   args: Record<string, string>
   data: string
   files: Record<string, string>
   form: Record<string, string>
   headers: Record<string, string>
+  json: any | null
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS'
+  origin: string
+  url: string
+}
+
+export type HttpBinEcho = {
+  args: Record<string, string[]>
+  data: string
+  files: Record<string, string[]>
+  form: Record<string, string[]>
+  headers: Record<string, string[]>
   json: any | null
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS'
   origin: string

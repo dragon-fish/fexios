@@ -179,7 +179,12 @@ And common request methods aliases:
 
 ## 钩子 Hooks
 
+You can modify context in hooks' callback then return it as a brand new context™.
+
+Return `false` to abort request immediately.
+
 ```ts
+export type FexiosHook<C = unknown> = (context: C) => AwaitAble<C | false>
 export interface FexiosContext<T = any> extends FexiosRequestOptions {
   url: string // may changes after beforeInit
   rawRequest?: Request // provide in beforeRequest
@@ -187,19 +192,7 @@ export interface FexiosContext<T = any> extends FexiosRequestOptions {
   response?: FexiosResponse // provide in afterRequest
   data?: T // provide in afterRequest
 }
-export type FexiosHook<C = unknown> = (context: C) => AwaitAble<C | false>
-export type FexiosEvents = 'beforeInit' | 'beforeRequest' | 'afterResponse'
 ```
-
-### beforeInit
-
-### beforeRequest
-
-### afterRequest
-
-You can modify context in hooks' callback then return it as brand new context™.
-
-Return `false` to abort request immediately.
 
 <details>
 
@@ -209,30 +202,66 @@ Return `false` to abort request immediately.
 const fexios = new Fexios()
 
 fexios.on('beforeRequest', async (ctx) => {
-  if (new URL(ctx.url).path === '/foo') {
+  const url = new URL(ctx.url)
+  if (url.searchParams.has('foo')) {
     return false
   } else {
-    ctx.query.foo = 'bar'
+    url.searchParams.set('foo', 'bar')
+    ctx.url = '' + url
+    return ctx
   }
-  return ctx
 })
 ```
 
 </details>
 
+### beforeInit
+
+All context passed as is. You can do custom conversions here.
+
+### beforeRequest
+
+Pre-converted done.
+
+At this time, `ctx.url` has been converted to final URL string. You cannot modify the `ctx.query` or `ctx.baseURL` to change `ctx.url`. Please modify `ctx.url` directly.
+
+- `ctx.url` `{string}` full URL string converted from url, baseURL and ctx.query
+- `ctx.query` `{Record<string, string>}` merged from url, requestOptions, baseOptions
+- `ctx.headers` `{Record<string, string>}` merged from requestOptions, baseOptions
+
+### afterBodyTransformed
+
+JSON body has been transformed to JSON string. `Content-Type` header has been set to body's type.
+
+- `ctx.body` `{string|URLSearchParams|FormData|Blob}`
+
+### beforeActualFetch
+
+The Request instance has been generated.
+
+At this time, you cannot modify the `ctx.url`, `ctx.query`, `ctx.headers` or `ctx.body` (etc.) anymore. Unless you pass a brand new `Request` to replace `ctx.rawRequest`.
+
+- `ctx.rawRequest` `{Request}`
+
+### afterResponse
+
+The `FexiosFinalContext` will be passed
+
 ### interceptors
 
 Oh, this is mimicked from axios. Just sweet sugar.
 
+<!-- prettier-ignore-start -->
 ```ts
-// They are same
+// They are the same
 fexios.on('beforeRequest', async (ctx) => {})
-fexios.interceptors.request.use((ctx) => {})
+fexios.interceptors.request.use((ctx) =>  {})
 
-// Bro, they are just same
+// Bro, they're just the same
 fexios.on('afterResponse', async (ctx) => {})
 fexios.interceptors.response.use((ctx) => {})
 ```
+<!-- prettier-ignore-end -->
 
 ---
 
