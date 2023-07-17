@@ -18,7 +18,7 @@ Fetch based HTTP client with similar API to axios for browser and Node.js
 - [x] 😏 Automatic transforms for JSON data
 - [x] 🤩 Instances with custom defaults
 - [x] 🫡 Instance extendable
-- [x] 😍 Fricking tiny size: `index.umd.js  4.56 kB │ gzip: 2.01 kB │ map: 17.06 kB`
+- [x] 😍 Fricking tiny size: `index.umd.js  5.00 kB │ gzip: 2.13 kB │ map: 19.03 kB`
 
 ## 安装 Installation
 
