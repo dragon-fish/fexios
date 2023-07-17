@@ -26,14 +26,13 @@ export class Fexios {
     'get',
     'head',
     'options',
-    'delete',
     'trace',
   ]
   // declare method shortcuts
   get!: FexiosShortcutMethodWithoutBody
   head!: FexiosShortcutMethodWithoutBody
   options!: FexiosShortcutMethodWithoutBody
-  delete!: FexiosShortcutMethodWithoutBody
+  delete!: FexiosShortcutMethodWithBody
   post!: FexiosShortcutMethodWithBody
   put!: FexiosShortcutMethodWithBody
   patch!: FexiosShortcutMethodWithBody

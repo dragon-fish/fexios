@@ -1,46 +1,49 @@
 import fexios from '../src/index'
 import { describe, it } from 'mocha'
 import { expect } from 'chai'
-import { HttpBinEcho } from './MockData'
 import { File } from '@web-std/file'
-import { readFile } from 'fs/promises'
-import { resolve } from 'path'
+import { HttpBinEcho, PostmanEcho } from './MockData'
+import { HTTPBIN_BASE_URL, POSTMANECHO_BASE_URL } from './constants'
 
-const fileName = 'blank.png'
-const filePath = resolve(__dirname, fileName)
+// create a fake png file with 1x1 pixel
+const fileName = 'test.png'
+const fileBase64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR42mMAAQAABQABoIJXOQAAAABJRU5ErkJggg=='
+const fileDataURL = `data:image/png;base64,${fileBase64}`
+const fileFile = dataURLtoFile(fileDataURL, fileName)
+
+function dataURLtoFile(dataurl: string, filename: string): File {
+  const arr = dataurl.split(',')
+  const mime = arr[0].match(/:(.*?);/)![1]
+  const bstr = atob(arr[1])
+  let n = bstr.length
+  const u8arr = new Uint8Array(n)
+  // eslint-disable-next-line no-plusplus
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n)
+  }
+  return new File([u8arr], filename, { type: mime })
+}
 
 describe('Fexios File Uploads', () => {
-  let fileFile: File
-  let fileBase64: string
-
-  before(async () => {
-    ;[fileFile, fileBase64] = await Promise.all([
-      (async () => {
-        const file = await readFile(filePath)
-        return new File([file], fileName, { type: 'image/png' })
-      })(),
-      readFile(filePath, 'base64'),
-    ])
-  })
-
   it('Upload file directly', async () => {
     const { data } = await fexios.post<HttpBinEcho>(
-      'https://httpbin.org/post',
+      `${HTTPBIN_BASE_URL}/post`,
       fileFile
     )
-
-    expect(data.data).to.includes(fileBase64)
+    expect(data.data).to.includes(fileDataURL)
   })
 
   it('Upload file with Form', async () => {
     const form = new FormData()
-    form.append('file', fileFile, fileName)
+    form.append(fileName, fileFile)
 
-    const { data } = await fexios.post<HttpBinEcho>(
-      'https://httpbin.org/post',
+    const { data } = await fexios.post<PostmanEcho>(
+      `${POSTMANECHO_BASE_URL}/post`,
       form
     )
 
-    expect(data.files.file).to.equal(`data:image/png;base64,${fileBase64}`)
+    console.info(data)
+    expect(data.files[fileName]).to.includes(fileBase64)
   })
 })
