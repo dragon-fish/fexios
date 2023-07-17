@@ -1,11 +1,13 @@
 import fexios, { Fexios } from '../src/index'
 import { describe, it } from 'mocha'
 import { expect } from 'chai'
-import { Todo, Comment, Post, HttpBinEcho } from './MockData'
+import { HttpBinEcho } from './MockData'
+
+const time = '' + Date.now()
 
 describe('Fexios Core', () => {
   it('Request with full url', async () => {
-    const { data } = await fexios.get<HttpBinEcho>('https://httpbin.org/get')
+    const { data } = await fexios.get<HttpBinEcho>('https://echo.hoppscotch.io')
     expect(data).to.be.an('object')
   })
 
@@ -56,24 +58,31 @@ describe('Fexios Core', () => {
     })
   })
 
-  it('POST with JSON body', async () => {
-    const fexios = new Fexios({
-      baseURL: 'https://httpbin.org',
-    })
-    const time = '' + Date.now()
-    const { data } = await fexios.post<HttpBinEcho>('/post', {
-      time,
-    })
+  it('POST with JSON', async () => {
+    const { data } = await fexios.post<HttpBinEcho>(
+      'https://httpbin.org/post',
+      {
+        time,
+      }
+    )
     expect(data.json.time).to.equal(time)
   })
 
-  it('POST with Form body', async () => {
-    const fexios = new Fexios({
-      baseURL: 'http://localhost:4321',
-    })
+  it('POST with URLSearchParams', async () => {
     const form = new URLSearchParams()
     const time = '' + Date.now()
-    form.set('time', time)
+    form.append('time', time)
+    const { data } = await fexios.post<HttpBinEcho>(
+      'https://httpbin.org/post',
+      form
+    )
+    expect(data.form.time).to.equal(time)
+  })
+
+  it('POST with FormData', async () => {
+    const form = new FormData()
+    const time = '' + Date.now()
+    form.append('time', time)
     const { data } = await fexios.post<HttpBinEcho>(
       'https://httpbin.org/post',
       form

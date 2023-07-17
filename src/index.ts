@@ -10,27 +10,34 @@ export class Fexios {
   hooks: Record<FexiosEvents, FexiosHook[]> = {
     beforeInit: [],
     beforeRequest: [],
+    afterBodyTransformed: [],
+    beforeActualFetch: [],
     afterResponse: [],
   }
   readonly DEFAULT_CONFIGS: FexiosConfigs = {
     baseURL: '',
     timeout: 60 * 1000,
     credentials: 'same-origin',
-    headers: {
-      'content-type': 'application/json; charset=UTF-8',
-    },
+    headers: {},
     query: {},
     responseType: 'json',
   }
-  private METHODS_WITHOUT_BODY: FexiosMethods[] = ['get', 'head', 'options']
+  private METHODS_WITHOUT_BODY: FexiosMethods[] = [
+    'get',
+    'head',
+    'options',
+    'delete',
+    'trace',
+  ]
   // declare method shortcuts
   get!: FexiosShortcutMethodWithoutBody
   head!: FexiosShortcutMethodWithoutBody
   options!: FexiosShortcutMethodWithoutBody
-  delete!: FexiosShortcutMethodWithBody
+  delete!: FexiosShortcutMethodWithoutBody
   post!: FexiosShortcutMethodWithBody
   put!: FexiosShortcutMethodWithBody
   patch!: FexiosShortcutMethodWithBody
+  trace!: FexiosShortcutMethodWithoutBody
 
   constructor(public baseConfigs: Partial<FexiosConfigs> = {}) {
     this.makeMethodShortcut('get')
@@ -40,6 +47,7 @@ export class Fexios {
       .makeMethodShortcut('delete')
       .makeMethodShortcut('head')
       .makeMethodShortcut('options')
+      .makeMethodShortcut('trace')
   }
 
   private makeMethodShortcut(method: FexiosMethods) {
@@ -77,7 +85,7 @@ export class Fexios {
     ctx = await this.emit('beforeInit', ctx)
 
     const reqURL = new URL(
-      url.toString(),
+      ctx.url.toString(),
       options.baseURL || this.baseConfigs.baseURL || globalThis.location?.href
     )
     ctx.url = reqURL.toString()
@@ -107,47 +115,80 @@ export class Fexios {
       )
     }
 
-    const requestInit: RequestInit = {
-      method: ctx.method || 'GET',
-      credentials: ctx.credentials,
-      headers: ctx.headers,
-    }
+    ctx = await this.emit('beforeRequest', ctx)
 
-    // Automatically transform JSON object to JSON string
-    if (ctx.body) {
-      requestInit.body =
-        ctx.body instanceof FormData || ctx.body instanceof URLSearchParams
-          ? ctx.body
-          : JSON.stringify(ctx.body)
+    let body: string | FormData | URLSearchParams | Blob | undefined
+    if (typeof ctx.body !== 'undefined' && ctx.body !== null) {
+      // Automatically transform JSON object to JSON string
+      if (
+        ctx.body instanceof Blob ||
+        ctx.body instanceof FormData ||
+        ctx.body instanceof URLSearchParams
+      ) {
+        body = ctx.body
+      } else if (typeof ctx.body === 'object') {
+        body = JSON.stringify(ctx.body)
+        ;(ctx.headers as any)['content-type'] =
+          'application/json; charset=UTF-8'
+      } else {
+        body = ctx.body
+      }
     }
 
     // Adjust content-type header
-    if (ctx.body instanceof FormData) {
-      ;(ctx.headers as any)['content-type'] = 'multipart/form-data'
-    } else if (ctx.body instanceof URLSearchParams) {
-      ;(ctx.headers as any)['content-type'] =
-        'application/x-www-form-urlencoded; charset=UTF-8'
-    } else if (typeof ctx.body === 'object') {
-      ;(ctx.headers as any)['content-type'] = 'application/json; charset=UTF-8'
+    if (!(options.headers as any)?.['content-type'] && body) {
+      // If body is FormData or URLSearchParams, simply delete content-type header to let Request constructor handle it
+      if (!(body instanceof FormData || body instanceof URLSearchParams)) {
+        delete (ctx.headers as any)['content-type']
+      }
+      // If body is a string and ctx.body is an object, it means ctx.body is a JSON string
+      else if (typeof body === 'string' && typeof ctx.body === 'object') {
+        ;(ctx.headers as any)['content-type'] =
+          'application/json; charset=UTF-8'
+      }
+      // If body is a Blob, set content-type header to the Blob's type
+      else if (body instanceof Blob) {
+        ;(ctx.headers as any)['content-type'] = body.type
+      }
     }
 
-    ctx = await this.emit('beforeRequest', ctx)
-    const abortController = ctx.abortController || new AbortController()
+    ctx.body = body
+    ctx = await this.emit('afterBodyTransformed', ctx)
+
+    const abortController =
+      ctx.abortController || globalThis.AbortController
+        ? new AbortController()
+        : undefined
     const rawRequest = new Request(ctx.url, {
-      ...requestInit,
-      signal: abortController.signal,
+      method: ctx.method || 'GET',
+      credentials: ctx.credentials,
+      headers: ctx.headers,
+      body: ctx.body as any,
+      signal: abortController?.signal,
     })
     ctx.rawRequest = rawRequest
 
+    ctx = await this.emit('beforeActualFetch', ctx)
+
+    const timeout = ctx.timeout || this.baseConfigs.timeout || 60 * 1000
     const timer = setTimeout(() => {
-      abortController.abort()
-    }, ctx.timeout || this.baseConfigs.timeout || 60 * 1000)
+      abortController?.abort()
+      if (!abortController) {
+        throw new FexiosError(
+          'TIMEOUT',
+          `Request timed out after ${timeout}ms`,
+          ctx
+        )
+      }
+    }, timeout)
+    const rawResponse = await fetch(ctx.rawRequest!)
+      .catch((err) => {
+        throw new FexiosError('NETWORK_ERROR', err.message, ctx)
+      })
+      .finally(() => {
+        clearTimeout(timer)
+      })
 
-    const rawResponse = await fetch(ctx.rawRequest!).catch((err) => {
-      throw new FexiosError('NETWORK_ERROR', err.message, ctx)
-    })
-
-    clearTimeout(timer)
     ctx.rawResponse = rawResponse
     ctx.response = await createFexiosResponse(rawResponse, ctx.responseType)
     ctx.data = ctx.response.data
@@ -195,7 +236,7 @@ export class Fexios {
         if (ctx === false) {
           throw new FexiosError(
             'ABORTED_BY_HOOK',
-            `Request aborted by hook "${hook.name}"`,
+            `Request aborted by hook "${event}: ${hook.name}"`,
             context as FexiosContext
           )
         } else if (typeof ctx === 'object') {
@@ -203,7 +244,7 @@ export class Fexios {
         } else {
           // @ts-ignore
           globalThis['con'.concat('sole')].warn(
-            `Hook "${hook.name}" should return a context object or false to abort request`
+            `Hook "${event}: ${hook.name}" should return a context object or false to abort request`
           )
         }
       }
@@ -295,26 +336,22 @@ export async function createFexiosResponse<T = any>(
       })) as T
   }
 
-  const isGood =
-    rawResponse.ok && rawResponse.status >= 200 && rawResponse.status < 300
-
-  const r: FexiosResponse<T> = {
+  const response: FexiosResponse<T> = {
     rawResponse,
     data,
     ok: rawResponse.ok,
     status: rawResponse.status,
-    isGood,
     statusText: rawResponse.statusText,
     headers: rawResponse.headers,
   }
 
-  if (!isGood) {
+  if (!rawResponse.ok) {
     throw new FexiosResponseError(
       `Request failed with status code ${rawResponse.status}`,
-      r as any
+      response as any
     )
   }
-  return r
+  return response
 }
 
 // Support for direct import
@@ -368,11 +405,15 @@ export type FexiosResponse<T = any> = {
   status: number
   statusText: string
   headers: Headers
-  isGood: boolean
   data: T
 }
 export type FexiosHook<C = unknown> = (context: C) => AwaitAble<C | false>
-export type FexiosEvents = 'beforeInit' | 'beforeRequest' | 'afterResponse'
+export type FexiosEvents =
+  | 'beforeInit'
+  | 'beforeRequest'
+  | 'afterBodyTransformed'
+  | 'beforeActualFetch'
+  | 'afterResponse'
 export type FexiosInterceptors = {
   request: {
     use: <C = FexiosContext>(hook: FexiosHook<C>, prepend?: boolean) => Fexios
@@ -389,6 +430,7 @@ export type FexiosMethods =
   | 'patch'
   | 'head'
   | 'options'
+  | 'trace'
   | 'GET'
   | 'POST'
   | 'PUT'
@@ -396,6 +438,7 @@ export type FexiosMethods =
   | 'PATCH'
   | 'HEAD'
   | 'OPTIONS'
+  | 'TRACE'
 
 type FexiosShortcutMethodWithoutBody = <T = any>(
   url: string | URL,
@@ -403,6 +446,6 @@ type FexiosShortcutMethodWithoutBody = <T = any>(
 ) => Promise<FexiosFinalContext<T>>
 type FexiosShortcutMethodWithBody = <T = any>(
   url: string | URL,
-  body: Record<string, any> | string | URLSearchParams | FormData,
+  body?: Record<string, any> | string | URLSearchParams | FormData | null,
   options?: Partial<FexiosRequestOptions>
 ) => Promise<FexiosFinalContext<T>>
