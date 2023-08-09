@@ -2,8 +2,8 @@ import fexios from '../src/index'
 import { describe, it } from 'mocha'
 import { expect } from 'chai'
 import { File } from '@web-std/file'
-import { HttpBinEcho, PostmanEcho } from './MockData'
-import { HTTPBIN_BASE_URL, POSTMANECHO_BASE_URL } from './constants'
+import { EchoResponse } from './MockData'
+import { ECHO_BASE_URL } from './constants'
 
 // create a fake png file with 1x1 pixel
 const fileName = 'test.png'
@@ -27,23 +27,26 @@ function dataURLtoFile(dataurl: string, filename: string): File {
 
 describe('Fexios File Uploads', () => {
   it('Upload file directly', async () => {
-    const { data } = await fexios.post<HttpBinEcho>(
-      `${HTTPBIN_BASE_URL}/post`,
+    const { data } = await fexios.post<EchoResponse>(
+      `${ECHO_BASE_URL}/post`,
       fileFile
     )
-    expect(data.data).to.includes(fileDataURL)
+
+    const fileInfo = data.binaryFiles?.[0]!
+    expect(fileInfo).not.to.be.undefined
+    expect(fileInfo.type).to.equal('image/png')
+    expect(fileInfo.dataURL).to.equal(fileDataURL)
   })
 
   it('Upload file with Form', async () => {
     const form = new FormData()
     form.append(fileName, fileFile)
 
-    const { data } = await fexios.post<PostmanEcho>(
-      `${POSTMANECHO_BASE_URL}/post`,
+    const { data } = await fexios.post<EchoResponse>(
+      `${ECHO_BASE_URL}/post`,
       form
     )
 
-    console.info(data)
-    expect(data.files[fileName]).to.includes(fileBase64)
+    expect(data.binaryFiles?.[0]?.name).to.equal(fileName)
   })
 })
