@@ -28,51 +28,16 @@ export class Fexios {
     'options',
     'trace',
   ]
-  // declare method shortcuts
-  get!: FexiosShortcutMethodWithoutBody
-  head!: FexiosShortcutMethodWithoutBody
-  options!: FexiosShortcutMethodWithoutBody
-  delete!: FexiosShortcutMethodWithBody
-  post!: FexiosShortcutMethodWithBody
-  put!: FexiosShortcutMethodWithBody
-  patch!: FexiosShortcutMethodWithBody
-  trace!: FexiosShortcutMethodWithoutBody
 
   constructor(public baseConfigs: Partial<FexiosConfigs> = {}) {
-    this.makeMethodShortcut('get')
-      .makeMethodShortcut('post')
-      .makeMethodShortcut('put')
-      .makeMethodShortcut('patch')
-      .makeMethodShortcut('delete')
-      .makeMethodShortcut('head')
-      .makeMethodShortcut('options')
-      .makeMethodShortcut('trace')
-  }
-
-  private makeMethodShortcut(method: FexiosMethods) {
-    Object.defineProperty(this, method, {
-      value: (
-        url: string | URL,
-        bodyOrQuery?: Record<string, any> | string | URLSearchParams,
-        options?: Partial<FexiosRequestOptions>
-      ) => {
-        if (
-          this.METHODS_WITHOUT_BODY.includes(
-            method.toLocaleLowerCase() as FexiosMethods
-          )
-        ) {
-          options = bodyOrQuery as any
-        } else {
-          options = options || {}
-          options.body = bodyOrQuery
-        }
-        return this.request(url, {
-          ...options,
-          method: method as FexiosMethods,
-        })
-      },
-    })
-    return this
+    this.createMethodShortcut('get')
+      .createMethodShortcut('post')
+      .createMethodShortcut('put')
+      .createMethodShortcut('patch')
+      .createMethodShortcut('delete')
+      .createMethodShortcut('head')
+      .createMethodShortcut('options')
+      .createMethodShortcut('trace')
   }
 
   async request<T = any>(
@@ -227,30 +192,62 @@ export class Fexios {
     return headersObject
   }
 
-  async emit<C = FexiosContext>(event: FexiosEvents, context: C) {
+  async emit<C = FexiosContext>(event: FexiosEvents, ctx: C) {
     const hooks = this.hooks[event] || []
     try {
-      for (const hook of hooks) {
-        const ctx = await (hook as FexiosHook<C>)(context)
-        if (ctx === false) {
+      for (const [index, hook] of hooks.entries()) {
+        const hookName = `${event}#${hook.name || index}`
+
+        // Set a symbol to check if the hook overrides the original context
+        const symbol = Symbol('FexiosHookContext')
+        ;(ctx as any).__hook_symbol__ = symbol
+
+        const newCtx = await (hook as FexiosHook<C>)(ctx)
+
+        // Check if the hook overrides the original context
+        if ((ctx as any).__hook_symbol__ !== symbol) {
           throw new FexiosError(
-            'ABORTED_BY_HOOK',
-            `Request aborted by hook "${event}: ${hook.name}"`,
-            context as FexiosContext
-          )
-        } else if (typeof ctx === 'object') {
-          context = ctx as C
-        } else {
-          // @ts-ignore
-          globalThis['con'.concat('sole')].warn(
-            `Hook "${event}: ${hook.name}" should return a context object or false to abort request`
+            'HOOK_CONTEXT_CHANGED',
+            `Hook "${hookName}" should not override the original FexiosContext object.`
           )
         }
+
+        // Excepted abort signal
+        if (newCtx === false) {
+          throw new FexiosError(
+            'ABORTED_BY_HOOK',
+            `Request aborted by hook "${hookName}"`,
+            ctx as FexiosContext
+          )
+        }
+        // Good
+        else if (
+          typeof newCtx === 'object' &&
+          (newCtx as any).__hook_symbol__ === symbol
+        ) {
+          ctx = newCtx as C
+        }
+        // Unexpected return value
+        else {
+          // @ts-ignore prevent esbuild optimize
+          const console = globalThis[''.concat('console')]
+          try {
+            throw new FexiosError(
+              'UNEXPECTED_HOOK_RETURN',
+              `Hook "${hookName}" should return the original FexiosContext or return false to abort the request, but got "${newCtx}".`
+            )
+          } catch (e: any) {
+            console.warn(e.stack || e)
+          }
+        }
+
+        // Clean up
+        delete (ctx as any).__hook_symbol__
       }
     } catch (e) {
       return Promise.reject(e)
     }
-    return context
+    return ctx
   }
   on<C = FexiosContext>(
     event: FexiosEvents,
@@ -259,8 +256,8 @@ export class Fexios {
   ) {
     if (typeof hook !== 'function') {
       throw new FexiosError(
-        'INVALID_HOOK',
-        `Hook "${hook}" should be a function`
+        'INVALID_HOOK_CALLBACK',
+        `Hook "${hook}" should be a function, but got "${typeof hook}"`
       )
     }
     this.hooks[event] ??= []
@@ -268,19 +265,48 @@ export class Fexios {
     return this
   }
 
-  get interceptors(): FexiosInterceptors {
+  private createInterceptor<T extends FexiosEvents>(
+    event: T
+  ): FexiosInterceptor {
     return {
-      request: {
-        use: <C = FexiosContext>(hook: FexiosHook<C>, prepend = false) => {
-          return this.on('beforeRequest', hook, prepend)
-        },
+      handlers: this.hooks[event],
+      use: <C = FexiosContext>(hook: FexiosHook<C>, prepend = false) => {
+        return this.on(event, hook, prepend)
       },
-      response: {
-        use: <C = FexiosContext>(hook: FexiosHook<C>, prepend = false) => {
-          return this.on('afterResponse', hook, prepend)
-        },
+      clear: () => {
+        this.hooks[event] = []
       },
     }
+  }
+  readonly interceptors: FexiosInterceptors = {
+    request: this.createInterceptor('beforeRequest'),
+    response: this.createInterceptor('afterResponse'),
+  }
+
+  private createMethodShortcut(method: FexiosMethods) {
+    Object.defineProperty(this, method, {
+      value: (
+        url: string | URL,
+        bodyOrQuery?: Record<string, any> | string | URLSearchParams,
+        options?: Partial<FexiosRequestOptions>
+      ) => {
+        if (
+          this.METHODS_WITHOUT_BODY.includes(
+            method.toLocaleLowerCase() as FexiosMethods
+          )
+        ) {
+          options = bodyOrQuery as any
+        } else {
+          options = options || {}
+          options.body = bodyOrQuery
+        }
+        return this.request(url, {
+          ...options,
+          method: method as FexiosMethods,
+        })
+      },
+    })
+    return this
   }
 
   extends(configs: Partial<FexiosConfigs>) {
@@ -289,9 +315,22 @@ export class Fexios {
     return fexios
   }
 
+  create = Fexios.create
   static create(configs?: Partial<FexiosConfigs>) {
     return new Fexios(configs)
   }
+}
+
+// declare method shortcuts
+export interface Fexios {
+  get: FexiosRequestShortcut<'get'>
+  post: FexiosRequestShortcut<'post'>
+  put: FexiosRequestShortcut<'put'>
+  patch: FexiosRequestShortcut<'patch'>
+  delete: FexiosRequestShortcut<'delete'>
+  head: FexiosRequestShortcut<'head'>
+  options: FexiosRequestShortcut<'options'>
+  trace: FexiosRequestShortcut<'trace'>
 }
 
 export class FexiosError extends Error {
@@ -306,10 +345,15 @@ export class FexiosError extends Error {
 }
 export class FexiosResponseError<T> extends FexiosError {
   name = 'FexiosResponseError'
-
   constructor(message: string, public response: FexiosResponse<T>) {
     super(response.statusText, message)
   }
+}
+/**
+ * Check if the error is a FexiosError that not caused by Response error
+ */
+export const isFexiosError = (e: any): boolean => {
+  return !(e instanceof FexiosResponseError) && e instanceof FexiosError
 }
 
 export async function createFexiosResponse<T = any>(
@@ -369,7 +413,7 @@ if (typeof window !== 'undefined') {
 }
 
 export type AwaitAble<T = unknown> = Promise<T> | T
-export type FexiosConfigs = {
+export interface FexiosConfigs {
   baseURL: string
   timeout: number
   query: Record<string, string | number | boolean> | URLSearchParams
@@ -398,7 +442,7 @@ export type FexiosFinalContext<T = any> = Omit<
   headers: Headers
   data: T
 }
-export type FexiosResponse<T = any> = {
+export interface FexiosResponse<T = any> {
   rawResponse: Response
   ok: boolean
   status: number
@@ -413,37 +457,31 @@ export type FexiosEvents =
   | 'afterBodyTransformed'
   | 'beforeActualFetch'
   | 'afterResponse'
-export type FexiosInterceptors = {
-  request: {
-    use: <C = FexiosContext>(hook: FexiosHook<C>, prepend?: boolean) => Fexios
-  }
-  response: {
-    use: <C = FexiosContext>(hook: FexiosHook<C>, prepend?: boolean) => Fexios
-  }
+export interface FexiosInterceptor {
+  handlers: FexiosHook[]
+  use: <C = FexiosContext>(hook: FexiosHook<C>, prepend?: boolean) => Fexios
+  clear: () => void
 }
-export type FexiosMethods =
-  | 'get'
-  | 'post'
-  | 'put'
-  | 'delete'
-  | 'patch'
-  | 'head'
-  | 'options'
-  | 'trace'
-  | 'GET'
-  | 'POST'
-  | 'PUT'
-  | 'DELETE'
-  | 'PATCH'
-  | 'HEAD'
-  | 'OPTIONS'
-  | 'TRACE'
+export interface FexiosInterceptors {
+  request: FexiosInterceptor
+  response: FexiosInterceptor
+}
 
-type FexiosShortcutMethodWithoutBody = <T = any>(
+type LowerAndUppercase<T extends string> = Lowercase<T> | Uppercase<T>
+export type FexiosMethods = LowerAndUppercase<
+  'get' | 'post' | 'put' | 'patch' | 'delete' | 'head' | 'options' | 'trace'
+>
+
+type MethodsWithoutBody = LowerAndUppercase<
+  'get' | 'head' | 'options' | 'trace'
+>
+export type FexiosRequestShortcut<M extends FexiosMethods> =
+  M extends MethodsWithoutBody ? ShortcutWithoutBody : ShortcutWithBody
+type ShortcutWithoutBody = <T = any>(
   url: string | URL,
   options?: Partial<FexiosRequestOptions>
 ) => Promise<FexiosFinalContext<T>>
-type FexiosShortcutMethodWithBody = <T = any>(
+type ShortcutWithBody = <T = any>(
   url: string | URL,
   body?: Record<string, any> | string | URLSearchParams | FormData | null,
   options?: Partial<FexiosRequestOptions>

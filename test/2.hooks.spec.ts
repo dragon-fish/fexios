@@ -1,4 +1,4 @@
-import { Fexios } from '../src/index'
+import { Fexios, FexiosFinalContext } from '../src/index'
 import { describe, it } from 'mocha'
 import { expect } from 'chai'
 import { EchoResponse } from './MockData'
@@ -32,6 +32,37 @@ describe('Fexios Hooks', () => {
     })
     const { data } = await fexios.get<EchoResponse>('/anything/1')
     expect(data.uuid).to.equal(time)
+  })
+
+  it('[HOOKS] ignore unexpected hooks', async () => {
+    const fexios = new Fexios({
+      baseURL: ECHO_BASE_URL,
+    })
+    const now = Date.now()
+    let realResponse: FexiosFinalContext<EchoResponse>
+    let invalidCallback: Error
+    try {
+      // @ts-expect-error not a function
+      fexios.on('beforeInit', null)
+    } catch (e: any) {
+      invalidCallback = e
+    }
+    // @ts-expect-error
+    fexios.on('afterResponse', (ctx) => {
+      return
+    })
+    // @ts-expect-error
+    fexios.on('afterResponse', (ctx) => {
+      return { data: { foo: 'bar' } }
+    })
+    fexios.on('afterResponse', (ctx) => {
+      realResponse = ctx as FexiosFinalContext
+      return Promise.reject(now)
+    })
+    const response = await fexios.get<EchoResponse>(`/${now}`).catch((e) => e)
+    expect(invalidCallback!).to.be.an('error')
+    expect(realResponse!.data?.pathname).to.equal(`/${now}`)
+    expect(response).to.equal(now)
   })
 
   it('[HOOKS] interceptors sugar', async () => {
