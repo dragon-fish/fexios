@@ -48,11 +48,13 @@ export class Fexios {
     ctx.url = url.toString()
     ctx = await this.emit('beforeInit', ctx)
 
-    const reqURL = new URL(
-      ctx.url.toString(),
-      options.baseURL || this.baseConfigs.baseURL || globalThis.location?.href
+    const baseURL = new URL(
+      options.baseURL || this.baseConfigs.baseURL || globalThis.location?.href,
+      globalThis.location?.href
     )
+    const reqURL = new URL(ctx.url.toString(), baseURL)
     ctx.url = reqURL.toString()
+    ctx.baseURL = baseURL.toString()
 
     ctx.headers = this.mergeHeaders(
       this.baseConfigs.headers,
