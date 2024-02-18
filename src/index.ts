@@ -1,3 +1,6 @@
+import CallableInstance from 'callable-instance'
+const __FEXIOS_CALL__ = Symbol('Fexios#CALL')
+
 /**
  * Fexios
  * @desc Fetch based HTTP client with similar API to axios for browser and Node.js
@@ -6,7 +9,7 @@
  * @author dragon-fish <dragon-fish@qq.com>
  */
 
-export class Fexios {
+export class Fexios<T = any> extends CallableInstance<any, any> {
   hooks: Record<FexiosEvents, FexiosHook[]> = {
     beforeInit: [],
     beforeRequest: [],
@@ -22,7 +25,17 @@ export class Fexios {
     query: {},
     responseType: 'json',
   }
-  private METHODS_WITHOUT_BODY: FexiosMethods[] = [
+  static readonly METHOD_SHORTCUTS: FexiosMethods[] = [
+    'get',
+    'post',
+    'put',
+    'patch',
+    'delete',
+    'head',
+    'options',
+    'trace',
+  ]
+  static readonly METHODS_WITHOUT_BODY: FexiosMethods[] = [
     'get',
     'head',
     'options',
@@ -30,14 +43,33 @@ export class Fexios {
   ]
 
   constructor(public baseConfigs: Partial<FexiosConfigs> = {}) {
-    this.createMethodShortcut('get')
-      .createMethodShortcut('post')
-      .createMethodShortcut('put')
-      .createMethodShortcut('patch')
-      .createMethodShortcut('delete')
-      .createMethodShortcut('head')
-      .createMethodShortcut('options')
-      .createMethodShortcut('trace')
+    super(__FEXIOS_CALL__)
+    Fexios.METHOD_SHORTCUTS.forEach((method) =>
+      this.defineMethodShortcut(method)
+    )
+  }
+
+  [__FEXIOS_CALL__]<T = any>(
+    url: string | URL,
+    options?: Partial<FexiosRequestOptions>
+  ): Promise<FexiosFinalContext<T>>
+  [__FEXIOS_CALL__]<T = any>(
+    options: Partial<FexiosRequestOptions & { url: string }>
+  ): Promise<FexiosFinalContext<T>>
+  [__FEXIOS_CALL__]<T = any>(
+    urlOrOptions:
+      | string
+      | URL
+      | Partial<FexiosRequestOptions & { url: string }>,
+    options?: Partial<FexiosRequestOptions>
+  ): Promise<FexiosFinalContext<T>> {
+    if (typeof urlOrOptions === 'string' || urlOrOptions instanceof URL) {
+      return this.request(urlOrOptions, options)
+    } else {
+      return this.request(urlOrOptions?.url ?? urlOrOptions?.baseURL ?? '', {
+        ...urlOrOptions,
+      })
+    }
   }
 
   async request<T = any>(
@@ -71,7 +103,7 @@ export class Fexios {
     ctx.url = reqURL.toString()
 
     if (
-      this.METHODS_WITHOUT_BODY.includes(
+      Fexios.METHODS_WITHOUT_BODY.includes(
         ctx.method?.toLocaleLowerCase() as FexiosMethods
       ) &&
       ctx.body
@@ -286,7 +318,7 @@ export class Fexios {
     response: this.createInterceptor('afterResponse'),
   }
 
-  private createMethodShortcut(method: FexiosMethods) {
+  private defineMethodShortcut(method: FexiosMethods) {
     Object.defineProperty(this, method, {
       value: (
         url: string | URL,
@@ -294,7 +326,7 @@ export class Fexios {
         options?: Partial<FexiosRequestOptions>
       ) => {
         if (
-          this.METHODS_WITHOUT_BODY.includes(
+          Fexios.METHODS_WITHOUT_BODY.includes(
             method.toLocaleLowerCase() as FexiosMethods
           )
         ) {
@@ -336,12 +368,26 @@ export interface Fexios {
   trace: FexiosRequestShortcut<'trace'>
 }
 
+// declare callable instance
+export interface Fexios {
+  <T = any>(
+    url: string | URL,
+    options?: Partial<FexiosRequestOptions & { url: string }>
+  ): Promise<FexiosFinalContext<T>>
+  <T = any>(options: Partial<FexiosRequestOptions & { url: string }>): Promise<
+    FexiosFinalContext<T>
+  >
+}
+
 export class FexiosError extends Error {
   name = 'FexiosError'
+  /** @deprecated Use `error.cause` instead */
+  context = this.cause
+
   constructor(
     public code: string,
     message?: string,
-    public context?: FexiosContext
+    public cause?: FexiosContext
   ) {
     super(message)
   }

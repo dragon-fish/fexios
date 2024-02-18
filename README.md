@@ -86,7 +86,11 @@ Refer: https://developer.mozilla.org/docs/Web/API/Fetch_API
 
 You can find some sample code snippets [here](test/).
 
-### new Fexios(configs: Partial\<FexiosConfigs>)
+### Create Instance
+
+```ts
+const fexios = new Fexios(configs: Partial<FexiosConfigs>)
+```
 
 <details>
 
@@ -106,11 +110,11 @@ export type FexiosConfigs = {
 
 <details>
 
-<summary>Defaults</summary>
+<summary>Default Configs</summary>
 
 ```ts
 const DEFAULT_CONFIGS = {
-  baseURL: '',
+  baseURL: '', // Defaults to `location.href` in browser environment
   credentials: 'same-origin',
   headers: {
     'content-type': 'application/json; charset=UTF-8',
@@ -122,9 +126,28 @@ const DEFAULT_CONFIGS = {
 
 </details>
 
-### Fexios#request(config: FexiosRequestOptions)
+### Request methods
 
-`fexios.request<T>(config): Promise<FexiosResponse<T>>`
+You can use `fexios.request` to send a request with custom options.
+
+```ts
+interface Fexios {
+  request<T = any>(
+    url: string | URL,
+    options?: Partial<FexiosRequestOptions>
+  ): Promise<FexiosFinalContext<T>>
+}
+```
+
+And common request methods aliases:
+
+- `fexios.get(url[, config])`
+- `fexios.delete(url[, config])`
+- `fexios.head(url[, config])`
+- `fexios.options(url[, config])`
+- `fexios.post(url[, data[, config]])`
+- `fexios.put(url[, data[, config]])`
+- `fexios.patch(url[, data[, config]])`
 
 <details>
 
@@ -144,7 +167,40 @@ export interface FexiosRequestOptions {
 
 </details>
 
-**returns {FexiosFinalContext}**
+### Call as a function
+
+Additionally, a `fexios` instance can be called directly as a function. It will look very much like `axios` or `fetch` API.
+
+**e.g.**
+
+```ts
+import fexios from 'fexios'
+
+// Directly call
+const response = await fexios('https://zh.moegirl.org.cn/api.php', {
+  method: 'POST',
+  body: {
+    foo: 'bar',
+  },
+  headers: {
+    'x-foo': 'bar',
+  },
+})
+// Or use method shortcuts
+const response = await fexios.post(
+  'https://zh.moegirl.org.cn/api.php',
+  {
+    foo: 'bar',
+  },
+  {
+    headers: {
+      'x-foo': 'bar',
+    },
+  }
+)
+```
+
+### Returns {FexiosFinalContext}
 
 ```ts
 export type FexiosFinalContext<T = any> = Omit<
@@ -166,16 +222,6 @@ export type FexiosResponse<T = any> = {
   data: T
 }
 ```
-
-And common request methods aliases:
-
-- fexios.get(url[, config])
-- fexios.delete(url[, config])
-- fexios.head(url[, config])
-- fexios.options(url[, config])
-- fexios.post(url[, data[, config]])
-- fexios.put(url[, data[, config]])
-- fexios.patch(url[, data[, config]])
 
 ## 钩子 Hooks
 
