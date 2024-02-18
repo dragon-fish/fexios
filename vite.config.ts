@@ -14,6 +14,17 @@ export default defineConfig({
     },
     sourcemap: true,
   },
+  test: {
+    coverage: {
+      enabled: true,
+      include: ['src/**'],
+      reportsDirectory: './.test_reports/coverage',
+    },
+    reporters: ['default', 'html'],
+    outputFile: {
+      html: './.test_reports/index.html',
+    },
+  },
   esbuild: {
     drop: PROD ? ['console'] : undefined,
   },

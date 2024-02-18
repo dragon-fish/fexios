@@ -1,5 +1,0 @@
-timeout: 10000
-extensions:
-  - ts
-require:
-  - esbuild-register

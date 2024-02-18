@@ -131,3 +131,4 @@ dist
 
 lib
 debug
+.test_reports

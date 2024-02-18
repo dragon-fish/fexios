@@ -1,6 +1,5 @@
+import { describe, expect, it } from 'vitest'
 import fexios from '../src/index'
-import { describe, it } from 'mocha'
-import { expect } from 'chai'
 import { File } from '@web-std/file'
 import { EchoResponse } from './MockData'
 import { ECHO_BASE_URL } from './constants'
