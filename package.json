@@ -60,6 +60,7 @@
     "vitest": "^1.3.0"
   },
   "dependencies": {
+    "callable-instance": "^2.0.0",
     "tslib": "^2.6.2"
   }
 }

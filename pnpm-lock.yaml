@@ -5,6 +5,9 @@ settings:
   excludeLinksFromLockfile: false
 
 dependencies:
+  callable-instance:
+    specifier: ^2.0.0
+    version: 2.0.0
   tslib:
     specifier: ^2.6.2
     version: 2.6.2
@@ -901,6 +904,10 @@ packages:
       function-bind: 1.1.1
       get-intrinsic: 1.2.1
     dev: true
+
+  /callable-instance@2.0.0:
+    resolution: {integrity: sha512-wOBp/J1CRZLsbFxG1alxefJjoG1BW/nocXkUanAe2+leiD/+cVr00j8twSZoDiRy03o5vibq9pbrZc+EDjjUTw==}
+    dev: false
 
   /chai@4.4.1:
     resolution: {integrity: sha512-13sOfMv2+DWduEU+/xbun3LScLoqN17nBeTLUsmDfKdoiC1fr0n9PU4guu4AhRcOVFk/sW8LyZWHuhWtQZiF+g==}
