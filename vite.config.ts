@@ -8,7 +8,9 @@ export default defineConfig({
   build: {
     lib: {
       name: 'Fexios',
-      fileName: 'index',
+      fileName: (format) => {
+        return format === 'es' ? 'index.mjs' : `index.${format}.js`
+      },
       entry: resolve(__dirname, 'src/index.ts'),
       formats: ['umd', 'es', 'iife'],
     },
