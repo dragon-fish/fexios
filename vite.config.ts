@@ -20,7 +20,10 @@ export default defineConfig({
       include: ['src/**'],
       reportsDirectory: './.test_reports/coverage',
     },
-    reporters: ['default', 'html'],
+    reporters: [
+      'default',
+      ...(process.env.GITHUB_ACTIONS ? ['github-actions'] : ['html']),
+    ],
     outputFile: {
       html: './.test_reports/index.html',
     },
