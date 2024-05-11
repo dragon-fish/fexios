@@ -7,13 +7,7 @@
  */
 
 export class Fexios {
-  hooks: Record<FexiosEvents, FexiosHook[]> = {
-    beforeInit: [],
-    beforeRequest: [],
-    afterBodyTransformed: [],
-    beforeActualFetch: [],
-    afterResponse: [],
-  }
+  protected hooks: FexiosHookStore[] = []
   readonly DEFAULT_CONFIGS: FexiosConfigs = {
     baseURL: '',
     timeout: 60 * 1000,
@@ -195,17 +189,18 @@ export class Fexios {
     return headersObject
   }
 
-  async emit<C = FexiosContext>(event: FexiosEvents, ctx: C) {
-    const hooks = this.hooks[event] || []
+  async emit<C = FexiosContext>(event: FexiosLifecycleEvents, ctx: C) {
+    const hooks = this.hooks.filter((hook) => hook.event === event)
     try {
-      for (const [index, hook] of hooks.entries()) {
-        const hookName = `${event}#${hook.name || index}`
+      let index = 0
+      for (const hook of hooks) {
+        const hookName = `${event}#${hook.action.name || index}`
 
         // Set a symbol to check if the hook overrides the original context
         const symbol = Symbol('FexiosHookContext')
         ;(ctx as any).__hook_symbol__ = symbol
 
-        const newCtx = await (hook as FexiosHook<C>)(ctx)
+        const newCtx = await (hook.action.bind(this) as FexiosHook<C>)(ctx)
 
         // Check if the hook overrides the original context
         if ((ctx as any).__hook_symbol__ !== symbol) {
@@ -246,6 +241,8 @@ export class Fexios {
 
         // Clean up
         delete (ctx as any).__hook_symbol__
+
+        index++
       }
     } catch (e) {
       return Promise.reject(e)
@@ -253,31 +250,36 @@ export class Fexios {
     return ctx
   }
   on<C = FexiosContext>(
-    event: FexiosEvents,
-    hook: FexiosHook<C>,
+    event: FexiosLifecycleEvents,
+    action: FexiosHook<C>,
     prepend = false
   ) {
-    if (typeof hook !== 'function') {
+    if (typeof action !== 'function') {
       throw new FexiosError(
         'INVALID_HOOK_CALLBACK',
-        `Hook "${hook}" should be a function, but got "${typeof hook}"`
+        `Hook "${action}" should be a function, but got "${typeof action}"`
       )
     }
-    this.hooks[event] ??= []
-    this.hooks[event][prepend ? 'unshift' : 'push'](hook as any)
+    this.hooks[prepend ? 'unshift' : 'push']({
+      event,
+      action: action as FexiosHook,
+    })
     return this
   }
 
-  private createInterceptor<T extends FexiosEvents>(
+  private createInterceptor<T extends FexiosLifecycleEvents>(
     event: T
   ): FexiosInterceptor {
     return {
-      handlers: this.hooks[event],
+      handlers: () =>
+        this.hooks
+          .filter((hook) => hook.event === event)
+          .map((hook) => hook.action),
       use: <C = FexiosContext>(hook: FexiosHook<C>, prepend = false) => {
         return this.on(event, hook, prepend)
       },
       clear: () => {
-        this.hooks[event] = []
+        this.hooks = this.hooks.filter((hook) => hook.event !== event)
       },
     }
   }
@@ -314,7 +316,7 @@ export class Fexios {
 
   extends(configs: Partial<FexiosConfigs>) {
     const fexios = new Fexios({ ...this.baseConfigs, ...configs })
-    fexios.hooks = { ...this.hooks }
+    fexios.hooks = [...this.hooks]
     return fexios
   }
 
@@ -454,14 +456,25 @@ export interface FexiosResponse<T = any> {
   data: T
 }
 export type FexiosHook<C = unknown> = (context: C) => AwaitAble<C | false>
-export type FexiosEvents =
+export interface FexiosHookStore {
+  event: FexiosLifecycleEvents
+  action: FexiosHook
+}
+export type FexiosLifecycleEvents =
   | 'beforeInit'
   | 'beforeRequest'
   | 'afterBodyTransformed'
   | 'beforeActualFetch'
   | 'afterResponse'
+export interface FexiosHooksNameMap {
+  beforeInit: FexiosContext
+  beforeRequest: FexiosContext
+  afterBodyTransformed: FexiosContext
+  beforeActualFetch: FexiosContext
+  afterResponse: FexiosFinalContext
+}
 export interface FexiosInterceptor {
-  handlers: FexiosHook[]
+  handlers: () => FexiosHook[]
   use: <C = FexiosContext>(hook: FexiosHook<C>, prepend?: boolean) => Fexios
   clear: () => void
 }

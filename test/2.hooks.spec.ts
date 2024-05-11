@@ -26,11 +26,11 @@ describe('Fexios Hooks', () => {
     fexios.on('afterResponse', (ctx) => {
       expect(ctx.data).to.be.an('object')
       expect(ctx.data.url).to.equal(`${ECHO_BASE_URL}/anything/3?foo=baz`)
-      ctx.data.uuid = time
+      ctx.data._meta.foo = time
       return ctx
     })
     const { data } = await fexios.get<EchoResponse>('/anything/1')
-    expect(data.uuid).to.equal(time)
+    expect(data._meta.foo).to.equal(time)
   })
 
   it('[HOOKS] ignore unexpected hooks', async () => {

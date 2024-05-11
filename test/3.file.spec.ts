@@ -24,17 +24,31 @@ function dataURLtoFile(dataurl: string, filename: string): File {
   return new File([u8arr], filename, { type: mime })
 }
 
+describe('Fexios Download Binary Files', () => {
+  it('GET binary file', async () => {
+    const { data } = await fexios.get<Blob>(
+      `${ECHO_BASE_URL}/assets/_blank.png`,
+      {
+        responseType: 'blob',
+      }
+    )
+    expect(data).to.be.instanceOf(Blob)
+    expect(data.type).to.equal('image/png')
+  })
+})
+
 describe('Fexios File Uploads', () => {
   it('Upload file directly', async () => {
     const { data } = await fexios.post<EchoResponse>(
       `${ECHO_BASE_URL}/post`,
       fileFile
     )
+    console.info('Upload file directly:', data)
 
     const fileInfo = data.binaryFiles?.[0]!
     expect(fileInfo).not.to.be.undefined
     expect(fileInfo.type).to.equal('image/png')
-    expect(fileInfo.dataURL).to.equal(fileDataURL)
+    expect(fileInfo.base64).to.equal(fileBase64)
   })
 
   it('Upload file with Form', async () => {

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import fexios, { Fexios } from '../src/index'
+import fexios, {
+  Fexios,
+  FexiosError,
+  FexiosResponseError,
+  isFexiosError,
+} from '../src/index'
 import { EchoResponse } from './MockData'
 import { ECHO_BASE_URL } from './constants'
 
@@ -56,6 +61,29 @@ describe('Fexios Core', () => {
       two: '222',
       three: '333',
     })
+  })
+
+  it('GET should not have body', async () => {
+    let error: FexiosError | undefined
+    try {
+      await fexios.get<EchoResponse>(`${ECHO_BASE_URL}/get`, { body: 'test' })
+    } catch (e) {
+      error = e
+    }
+    expect(error).to.be.instanceOf(FexiosError)
+    expect(isFexiosError(error)).to.be.true
+  })
+
+  it('Bad status should throw ResponseError', async () => {
+    let error: FexiosResponseError<string> | undefined
+    try {
+      await fexios.get<EchoResponse>(`${ECHO_BASE_URL}/_status/404`)
+    } catch (e) {
+      error = e
+    }
+    expect(error).to.be.instanceOf(FexiosResponseError)
+    expect(isFexiosError(error)).to.be.false
+    expect(error?.response.data).to.equal(404)
   })
 
   it('POST with JSON', async () => {
