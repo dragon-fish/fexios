@@ -4,7 +4,7 @@
     "module": "ESNext",
     "strict": true,
     "importHelpers": true,
-    "moduleResolution": "node",
+    "moduleResolution": "Bundler",
     "experimentalDecorators": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -15,11 +15,11 @@
     "lib": ["ESNext", "DOM"],
     "declaration": true,
     "outDir": "lib",
-    "typeRoots": ["node_modules/@types"],
+    "noEmit": true,
     "paths": {
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "lib", "**/dist"]
+  "include": ["src"],
+  "exclude": ["lib", "dist"]
 }

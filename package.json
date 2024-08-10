@@ -2,18 +2,25 @@
   "name": "fexios",
   "version": "1.6.1",
   "description": "Fetch based HTTP client with similar API to axios for browser and Node.js",
-  "main": "./lib/index.js",
-  "types": "./lib/index.d.ts",
-  "browser": "./dist/index.umd.js",
+  "main": "./dist/index.cjs",
+  "types": "./dist/index.d.ts",
+  "browser": "./dist/index.umd.cjs",
   "module": "./dist/index.js",
   "type": "module",
   "files": [
     "dist",
     "lib"
   ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "scripts": {
     "prepublish": "npm run build",
-    "build": "npm run clean && tsc --module commonjs && vite build",
+    "build": "npm run clean && vite build",
     "clean": "rimraf dist lib",
     "test": "vitest run ./test",
     "review": "vite preview --outDir ./.test_reports"
@@ -45,21 +52,19 @@
     "node": "^16.15.0 || >=18.0.0"
   },
   "devDependencies": {
-    "@types/formidable": "^3.4.5",
-    "@types/mocha": "^10.0.6",
-    "@types/node": "^20.12.12",
-    "@vitest/coverage-v8": "^1.6.0",
-    "@vitest/ui": "^1.6.0",
+    "@types/node": "^20.14.15",
+    "@vitest/coverage-v8": "^2.0.5",
+    "@vitest/ui": "^2.0.5",
     "@web-std/file": "^3.0.3",
     "dotenv": "^16.4.5",
-    "rimraf": "^5.0.7",
-    "tsx": "^4.10.2",
-    "typescript": "^5.4.5",
-    "vite": "^5.2.11",
-    "vite-plugin-dts": "^3.9.1",
-    "vitest": "^1.6.0"
+    "rimraf": "^6.0.1",
+    "tsx": "^4.17.0",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.0",
+    "vite-plugin-dts": "^4.0.2",
+    "vitest": "^2.0.5"
   },
   "dependencies": {
-    "tslib": "^2.6.2"
+    "tslib": "^2.6.3"
   }
 }

@@ -16,7 +16,17 @@ export class Fexios {
     query: {},
     responseType: 'json',
   }
-  private METHODS_WITHOUT_BODY: FexiosMethods[] = [
+  private readonly ALL_METHODS: FexiosMethods[] = [
+    'get',
+    'post',
+    'put',
+    'patch',
+    'delete',
+    'head',
+    'options',
+    'trace',
+  ]
+  private readonly METHODS_WITHOUT_BODY: FexiosMethods[] = [
     'get',
     'head',
     'options',
@@ -24,14 +34,7 @@ export class Fexios {
   ]
 
   constructor(public baseConfigs: Partial<FexiosConfigs> = {}) {
-    this.createMethodShortcut('get')
-      .createMethodShortcut('post')
-      .createMethodShortcut('put')
-      .createMethodShortcut('patch')
-      .createMethodShortcut('delete')
-      .createMethodShortcut('head')
-      .createMethodShortcut('options')
-      .createMethodShortcut('trace')
+    this.ALL_METHODS.forEach(this.createMethodShortcut.bind(this))
   }
 
   async request<T = any>(

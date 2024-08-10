@@ -1,4 +1,4 @@
-import { resolve } from 'path'
+import { resolve } from 'node:path'
 import { defineConfig } from 'vite'
 import dts from 'vite-plugin-dts'
 
@@ -9,8 +9,8 @@ export default defineConfig({
     lib: {
       name: 'Fexios',
       fileName: 'index',
-      entry: resolve(__dirname, 'src/index.ts'),
-      formats: ['umd', 'es', 'iife'],
+      entry: resolve(import.meta.dirname, 'src/index.ts'),
+      formats: ['umd', 'es', 'iife', 'cjs'],
     },
     sourcemap: true,
   },
@@ -27,11 +27,6 @@ export default defineConfig({
   },
   esbuild: {
     drop: PROD ? ['console'] : undefined,
-  },
-  define: {
-    // @FIX Uncaught ReferenceError: process is not defined
-    // @link https://github.com/vitejs/vite/issues/9186
-    'process.env.NODE_ENV': '"production"',
   },
   plugins: [dts()],
 })
