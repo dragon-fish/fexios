@@ -4,7 +4,7 @@ import { EchoResponse } from './MockData'
 import { ECHO_BASE_URL } from './constants'
 
 // @ts-ignore
-globalThis.location = new URL(ECHO_BASE_URL)
+globalThis.location ||= new URL(ECHO_BASE_URL)
 
 describe('Special baseURL', () => {
   it('Without baseURL, request with absolute path', async () => {

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import fexios, {
   Fexios,
   FexiosError,
+  FexiosFinalContext,
+  FexiosResponse,
   FexiosResponseError,
   isFexiosError,
 } from '../src/index'
@@ -22,6 +24,13 @@ describe('Fexios Core', () => {
     })
     const { data } = await fexios.get<EchoResponse>('/path/to/anywhere')
     expect(data.url).to.equal(`${ECHO_BASE_URL}/path/to/anywhere`)
+  })
+
+  it('Pass first argument as options', async () => {
+    const { data } = await fexios.request<EchoResponse>({
+      url: `${ECHO_BASE_URL}/get`,
+    })
+    expect(data).to.be.an('object')
   })
 
   it('Merge query params', async () => {
@@ -83,7 +92,7 @@ describe('Fexios Core', () => {
     }
     expect(error).to.be.instanceOf(FexiosResponseError)
     expect(isFexiosError(error)).to.be.false
-    expect(error?.response.data).to.equal(404)
+    expect(error?.response.data).to.equal('404')
   })
 
   it('POST with JSON', async () => {
@@ -113,5 +122,13 @@ describe('Fexios Core', () => {
       form
     )
     expect(data.formData?.time).to.equal(time)
+  })
+
+  it('Callable instance', async () => {
+    const { data: data1 } = (await fexios(`${ECHO_BASE_URL}/`, {
+      method: 'POST',
+    })) as FexiosFinalContext<EchoResponse>
+    expect(data1).to.be.an('object')
+    expect(data1.method).to.equal('POST')
   })
 })

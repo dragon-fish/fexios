@@ -24,6 +24,7 @@ export default defineConfig({
     outputFile: {
       html: './.test_reports/index.html',
     },
+    testTimeout: 10 * 1000,
   },
   esbuild: {
     drop: PROD ? ['console'] : undefined,

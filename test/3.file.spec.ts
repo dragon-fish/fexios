@@ -32,6 +32,7 @@ describe('Fexios Download Binary Files', () => {
         responseType: 'blob',
       }
     )
+    console.info(data)
     expect(data).to.be.instanceOf(Blob)
     expect(data.type).to.equal('image/png')
   })
@@ -43,7 +44,6 @@ describe('Fexios File Uploads', () => {
       `${ECHO_BASE_URL}/post`,
       fileFile
     )
-    console.info('Upload file directly:', data)
 
     const fileInfo = data.binaryFiles?.[0]!
     expect(fileInfo).not.to.be.undefined

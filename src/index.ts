@@ -1,3 +1,5 @@
+import CallableInstance from 'callable-instance'
+
 /**
  * Fexios
  * @desc Fetch based HTTP client with similar API to axios for browser and Node.js
@@ -6,7 +8,13 @@
  * @author dragon-fish <dragon-fish@qq.com>
  */
 
-export class Fexios {
+export class Fexios extends CallableInstance<
+  [
+    string | URL | Partial<FexiosRequestOptions>,
+    Partial<FexiosRequestOptions>?
+  ],
+  Promise<FexiosFinalContext<any>>
+> {
   protected hooks: FexiosHookStore[] = []
   readonly DEFAULT_CONFIGS: FexiosConfigs = {
     baseURL: '',
@@ -14,7 +22,7 @@ export class Fexios {
     credentials: 'same-origin',
     headers: {},
     query: {},
-    responseType: 'json',
+    responseType: undefined,
   }
   private readonly ALL_METHODS: FexiosMethods[] = [
     'get',
@@ -34,15 +42,30 @@ export class Fexios {
   ]
 
   constructor(public baseConfigs: Partial<FexiosConfigs> = {}) {
+    super('request')
     this.ALL_METHODS.forEach(this.createMethodShortcut.bind(this))
   }
 
   async request<T = any>(
     url: string | URL,
     options?: Partial<FexiosRequestOptions>
+  ): Promise<FexiosFinalContext<T>>
+  async request<T = any>(
+    options: Partial<FexiosRequestOptions> & { url: string | URL }
+  ): Promise<FexiosFinalContext<T>>
+  async request<T = any>(
+    urlOrOptions:
+      | string
+      | URL
+      | (Partial<FexiosRequestOptions> & { url: string | URL }),
+    options?: Partial<FexiosRequestOptions>
   ): Promise<FexiosFinalContext<T>> {
     let ctx: FexiosContext = (options = options || {}) as any
-    ctx.url = url.toString()
+    if (typeof urlOrOptions === 'string' || urlOrOptions instanceof URL) {
+      ctx.url = urlOrOptions.toString()
+    } else if (typeof urlOrOptions === 'object') {
+      ctx = { ...urlOrOptions, ...ctx }
+    }
     ctx = await this.emit('beforeInit', ctx)
 
     const baseUrlString =
@@ -74,7 +97,7 @@ export class Fexios {
       ctx.body
     ) {
       throw new FexiosError(
-        'BODY_NOT_ALLOWED',
+        FexiosErrorCodes.BODY_NOT_ALLOWED,
         `Request method "${ctx.method}" does not allow body`
       )
     }
@@ -126,6 +149,8 @@ export class Fexios {
     const rawRequest = new Request(ctx.url, {
       method: ctx.method || 'GET',
       credentials: ctx.credentials,
+      cache: ctx.cache,
+      mode: ctx.mode,
       headers: ctx.headers,
       body: ctx.body as any,
       signal: abortController?.signal,
@@ -134,27 +159,46 @@ export class Fexios {
 
     ctx = await this.emit('beforeActualFetch', ctx)
 
+    if (ctx.url.startsWith('ws')) {
+      console.info('WebSocket:', ctx.url)
+      const ws = new WebSocket(ctx.url)
+      ctx.rawResponse = new Response()
+      ctx.response = new FexiosResponse(ctx.rawResponse, ws as any, {
+        ok: true,
+        status: 101,
+        statusText: 'Switching Protocols',
+      })
+      ctx.data = ws
+      ctx.headers = new Headers()
+      return this.emit('afterResponse', ctx) as any
+    }
+
     const timeout = ctx.timeout || this.baseConfigs.timeout || 60 * 1000
     const timer = setTimeout(() => {
       abortController?.abort()
       if (!abortController) {
         throw new FexiosError(
-          'TIMEOUT',
+          FexiosErrorCodes.TIMEOUT,
           `Request timed out after ${timeout}ms`,
           ctx
         )
       }
     }, timeout)
-    const rawResponse = await fetch(ctx.rawRequest!)
-      .catch((err) => {
-        throw new FexiosError('NETWORK_ERROR', err.message, ctx)
-      })
-      .finally(() => {
-        clearTimeout(timer)
-      })
+    const rawResponse = await fetch(ctx.rawRequest!).catch((err) => {
+      throw new FexiosError(FexiosErrorCodes.NETWORK_ERROR, err.message, ctx)
+    })
 
     ctx.rawResponse = rawResponse
-    ctx.response = await createFexiosResponse(rawResponse, ctx.responseType)
+    ctx.response = await Fexios.resolveResponseBody(
+      rawResponse,
+      ctx.responseType,
+      (progress, buffer) => {
+        console.info('Download progress:', progress)
+        options?.onProgress?.(progress, buffer)
+      }
+    ).finally(() => {
+      clearTimeout(timer)
+    })
     ctx.data = ctx.response.data
     ctx.headers = ctx.response.headers
 
@@ -197,26 +241,18 @@ export class Fexios {
     try {
       let index = 0
       for (const hook of hooks) {
-        const hookName = `${event}#${hook.action.name || index}`
+        const hookName = `${event}#${hook.action.name || `anonymous#${index}`}`
 
         // Set a symbol to check if the hook overrides the original context
         const symbol = Symbol('FexiosHookContext')
-        ;(ctx as any).__hook_symbol__ = symbol
+        ;(ctx as any)[symbol] = symbol
 
-        const newCtx = await (hook.action.bind(this) as FexiosHook<C>)(ctx)
-
-        // Check if the hook overrides the original context
-        if ((ctx as any).__hook_symbol__ !== symbol) {
-          throw new FexiosError(
-            'HOOK_CONTEXT_CHANGED',
-            `Hook "${hookName}" should not override the original FexiosContext object.`
-          )
-        }
+        const newCtx = (await hook.action.call(this, ctx)) as Awaited<C | false>
 
         // Excepted abort signal
         if (newCtx === false) {
           throw new FexiosError(
-            'ABORTED_BY_HOOK',
+            FexiosErrorCodes.ABORTED_BY_HOOK,
             `Request aborted by hook "${hookName}"`,
             ctx as FexiosContext
           )
@@ -224,7 +260,7 @@ export class Fexios {
         // Good
         else if (
           typeof newCtx === 'object' &&
-          (newCtx as any).__hook_symbol__ === symbol
+          (newCtx as any)[symbol] === symbol
         ) {
           ctx = newCtx as C
         }
@@ -234,7 +270,7 @@ export class Fexios {
           const console = globalThis[''.concat('console')]
           try {
             throw new FexiosError(
-              'UNEXPECTED_HOOK_RETURN',
+              FexiosErrorCodes.HOOK_CONTEXT_CHANGED,
               `Hook "${hookName}" should return the original FexiosContext or return false to abort the request, but got "${newCtx}".`
             )
           } catch (e: any) {
@@ -243,7 +279,7 @@ export class Fexios {
         }
 
         // Clean up
-        delete (ctx as any).__hook_symbol__
+        delete (ctx as any)[symbol]
 
         index++
       }
@@ -259,14 +295,20 @@ export class Fexios {
   ) {
     if (typeof action !== 'function') {
       throw new FexiosError(
-        'INVALID_HOOK_CALLBACK',
-        `Hook "${action}" should be a function, but got "${typeof action}"`
+        FexiosErrorCodes.INVALID_HOOK_CALLBACK,
+        `Hook should be a function, but got "${typeof action}"`
       )
     }
     this.hooks[prepend ? 'unshift' : 'push']({
       event,
       action: action as FexiosHook,
     })
+    return this
+  }
+  off(event: FexiosLifecycleEvents, action: FexiosHook<any>) {
+    this.hooks = this.hooks.filter(
+      (hook) => hook.event !== event || hook.action !== action
+    )
     return this
   }
 
@@ -317,13 +359,174 @@ export class Fexios {
     return this
   }
 
+  static async resolveResponseBody<T = any>(
+    rawResponse: Response,
+    expectType?: FexiosConfigs['responseType'],
+    onProgress?: (progress: number, buffer?: Uint8Array) => void
+  ): Promise<FexiosResponse<T>> {
+    if (rawResponse.bodyUsed) {
+      throw new FexiosError(
+        'BODY_USED',
+        'Response body has already been used or locked'
+      )
+    }
+
+    const contentType = rawResponse.headers.get('content-type') || ''
+    const contentLength = Number(rawResponse.headers.get('content-length')) || 0
+
+    // Check if the response is a WebSocket
+    if (
+      (rawResponse.status === 101 ||
+        rawResponse.status === 426 ||
+        rawResponse.headers.get('upgrade')) &&
+      typeof globalThis.WebSocket !== 'undefined'
+    ) {
+      const ws = new WebSocket(rawResponse.url)
+      await new Promise<any>((resolve, reject) => {
+        ws.onopen = resolve
+        ws.onerror = reject
+      })
+      return new FexiosResponse(rawResponse, ws as T, {
+        ok: true,
+        status: 101,
+        statusText: 'Switching Protocols',
+      })
+    }
+    // Check if the response is a EventSource
+    // But only if the content-type is not 'text' or 'json'
+    else if (
+      contentType.startsWith('text/event-stream') &&
+      !['text', 'json'].includes(expectType || '') &&
+      typeof globalThis.EventSource !== 'undefined'
+    ) {
+      const es = new EventSource(rawResponse.url)
+      await new Promise<any>((resolve, reject) => {
+        es.onopen = resolve
+        es.onerror = reject
+      })
+      return new FexiosResponse(rawResponse, es as T)
+    }
+    // Check if expectType is 'stream'
+    else if (expectType === 'stream') {
+      return new FexiosResponse(
+        rawResponse,
+        rawResponse.body as ReadableStream as T
+      )
+    }
+    // Check if the response is a ReadableStream
+    else {
+      const reader = rawResponse.body?.getReader()
+      if (!reader) {
+        throw new FexiosError(
+          FexiosErrorCodes.NO_BODY_READER,
+          'Failed to get ReadableStream from response body'
+        )
+      }
+      let buffer = new Uint8Array()
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer = new Uint8Array([...buffer, ...value])
+        if (onProgress && contentLength) {
+          onProgress(buffer.length / contentLength, buffer)
+        }
+      }
+
+      const res = new FexiosResponse(rawResponse, undefined as any)
+
+      // Guess the response type, maybe a Blob?
+      if (
+        expectType === 'blob' ||
+        contentType.startsWith('image/') ||
+        contentType.startsWith('video/') ||
+        contentType.startsWith('audio/') ||
+        !this.isText(buffer)
+      ) {
+        res.data = new Blob([buffer], {
+          type: rawResponse.headers.get('content-type') || undefined,
+        }) as Blob as T
+      }
+      // Otherwise, try to decode the buffer as text
+      else {
+        res.data = new TextDecoder().decode(buffer) as T
+      }
+
+      // If the data resolved as a string above, try to parse it as JSON
+      if (
+        typeof res.data === 'string' &&
+        expectType !== 'text' &&
+        (expectType === 'json' || contentType.startsWith('application/json'))
+      ) {
+        if (
+          (res.data[0] === '{' && res.data[res.data.length - 1] === '}') ||
+          (res.data[0] === '[' && res.data[res.data.length - 1] === ']')
+        ) {
+          try {
+            res.data = JSON.parse(res.data as string) as T
+          } catch (e) {
+            console.warn('Failed to parse response data as JSON:', e)
+          }
+        }
+      }
+
+      // Fall back to the buffer if the data is still not resolved
+      if (typeof res.data === 'undefined') {
+        res.data = buffer.length > 0 ? (buffer as any) : undefined
+      }
+
+      if (!res.ok) {
+        throw new FexiosResponseError(
+          `Request failed with status code ${rawResponse.status}`,
+          res as any
+        )
+      } else {
+        return res
+      }
+    }
+  }
+
+  static isText(uint8Array: Uint8Array, maxBytesToCheck = 1024) {
+    // 确保输入是一个 Uint8Array
+    if (!(uint8Array instanceof Uint8Array)) {
+      throw new TypeError('Input must be a Uint8Array')
+    }
+
+    // 截取前 maxBytesToCheck 字节进行检查
+    const dataToCheck = uint8Array.slice(0, maxBytesToCheck)
+
+    // 使用 TextDecoder 尝试解码为 UTF-8 字符串
+    const decoder = new TextDecoder('utf-8', { fatal: true })
+    try {
+      const decodedString = decoder.decode(dataToCheck)
+
+      // 检查解码后的字符串是否包含大量不可打印字符
+      const nonPrintableRegex = /[\x00-\x08\x0E-\x1F\x7F]/g // 匹配控制字符
+      const nonPrintableMatches = decodedString.match(nonPrintableRegex)
+
+      // 如果不可打印字符占比过高，则认为是二进制数据
+      const threshold = 0.1 // 允许最多 10% 的不可打印字符
+      if (
+        nonPrintableMatches &&
+        nonPrintableMatches.length / decodedString.length > threshold
+      ) {
+        return false // 是二进制数据
+      }
+
+      // 否则认为是文本数据
+      return true
+    } catch (error) {
+      // 如果解码失败（例如包含无效的 UTF-8 序列），认为是二进制数据
+      return false
+    }
+  }
+
   extends(configs: Partial<FexiosConfigs>) {
     const fexios = new Fexios({ ...this.baseConfigs, ...configs })
     fexios.hooks = [...this.hooks]
     return fexios
   }
 
-  create = Fexios.create
+  readonly create = Fexios.create
   static create(configs?: Partial<FexiosConfigs>) {
     return new Fexios(configs)
   }
@@ -341,20 +544,56 @@ export interface Fexios {
   trace: FexiosRequestShortcut<'trace'>
 }
 
+export class FexiosResponse<T = any> {
+  public ok: boolean
+  public status: number
+  public statusText: string
+  public headers: Headers
+  constructor(
+    public rawResponse: Response,
+    public data: T,
+    overrides?: Partial<Omit<FexiosResponse<T>, 'rawResponse' | 'data'>>
+  ) {
+    this.ok = rawResponse.ok
+    this.status = rawResponse.status
+    this.statusText = rawResponse.statusText
+    this.headers = rawResponse.headers
+    Object.entries(overrides || {}).forEach(([key, value]) => {
+      ;(this as any)[key] = value
+    })
+  }
+}
+
+export enum FexiosErrorCodes {
+  BODY_USED = 'BODY_USED',
+  NO_BODY_READER = 'NO_BODY_READER',
+  TIMEOUT = 'TIMEOUT',
+  NETWORK_ERROR = 'NETWORK_ERROR',
+  BODY_NOT_ALLOWED = 'BODY_NOT_ALLOWED',
+  HOOK_CONTEXT_CHANGED = 'HOOK_CONTEXT_CHANGED',
+  ABORTED_BY_HOOK = 'ABORTED_BY_HOOK',
+  INVALID_HOOK_CALLBACK = 'INVALID_HOOK_CALLBACK',
+  UNEXPECTED_HOOK_RETURN = 'UNEXPECTED_HOOK_RETURN',
+}
 export class FexiosError extends Error {
   name = 'FexiosError'
   constructor(
-    public code: string,
+    readonly code: FexiosErrorCodes | string,
     message?: string,
-    public context?: FexiosContext
+    readonly context?: FexiosContext,
+    options?: ErrorOptions
   ) {
-    super(message)
+    super(message, options)
   }
 }
 export class FexiosResponseError<T> extends FexiosError {
   name = 'FexiosResponseError'
-  constructor(message: string, public response: FexiosResponse<T>) {
-    super(response.statusText, message)
+  constructor(
+    message: string,
+    readonly response: FexiosResponse<T>,
+    options?: ErrorOptions
+  ) {
+    super(response.statusText, message, undefined, options)
   }
 }
 /**
@@ -364,60 +603,21 @@ export const isFexiosError = (e: any): boolean => {
   return !(e instanceof FexiosResponseError) && e instanceof FexiosError
 }
 
-export async function createFexiosResponse<T = any>(
-  rawResponse: Response,
-  contentType = 'json'
-): Promise<FexiosResponse<T>> {
-  let data: T
-  if (contentType === 'blob') {
-    data = (await rawResponse
-      .clone()
-      .blob()
-      .catch(() => {
-        // do nothing
-      })) as T
-  }
-  // @ts-expect-error
-  if (!data) {
-    data = (await rawResponse
-      .clone()
-      .json()
-      .catch(() => {
-        return rawResponse.clone().text()
-      })) as T
-  }
-
-  const response: FexiosResponse<T> = {
-    rawResponse,
-    data,
-    ok: rawResponse.ok,
-    status: rawResponse.status,
-    statusText: rawResponse.statusText,
-    headers: rawResponse.headers,
-  }
-
-  if (!rawResponse.ok) {
-    throw new FexiosResponseError(
-      `Request failed with status code ${rawResponse.status}`,
-      response as any
-    )
-  }
-  return response
-}
-
 // Support for direct import
-export default createFexios()
-export function createFexios(configs?: Partial<FexiosConfigs>) {
-  return Fexios.create(configs)
-}
+export const createFexios = Fexios.create
+export const fexios = createFexios()
+export default fexios
 // Set global fexios instance for browser
 declare global {
   interface Window {
     fexios: Fexios
   }
+  const fexios: Fexios
 }
-if (typeof window !== 'undefined') {
-  window.fexios = createFexios()
+if (typeof globalThis !== 'undefined') {
+  ;(globalThis as any).fexios = fexios
+} else if (typeof window !== 'undefined') {
+  window.fexios = fexios
 }
 
 export type AwaitAble<T = unknown> = Promise<T> | T
@@ -426,13 +626,17 @@ export interface FexiosConfigs {
   timeout: number
   query: Record<string, string | number | boolean> | URLSearchParams
   headers: Record<string, string> | Headers
-  credentials: 'omit' | 'same-origin' | 'include'
-  responseType: 'json' | 'blob' | 'text'
+  credentials?: RequestInit['credentials']
+  cache?: RequestInit['cache']
+  mode?: RequestInit['mode']
+  responseType?: 'json' | 'blob' | 'text' | 'stream'
 }
 export interface FexiosRequestOptions extends FexiosConfigs {
+  url?: string | URL
   method?: FexiosMethods
   body?: Record<string, any> | string | FormData | URLSearchParams
   abortController?: AbortController
+  onProgress?: (progress: number, buffer?: Uint8Array) => void
 }
 export interface FexiosContext<T = any> extends FexiosRequestOptions {
   url: string
@@ -447,14 +651,6 @@ export type FexiosFinalContext<T = any> = Omit<
 > & {
   rawResponse: Response
   response: FexiosResponse<T>
-  headers: Headers
-  data: T
-}
-export interface FexiosResponse<T = any> {
-  rawResponse: Response
-  ok: boolean
-  status: number
-  statusText: string
   headers: Headers
   data: T
 }
