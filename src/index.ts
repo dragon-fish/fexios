@@ -305,10 +305,14 @@ export class Fexios extends CallableInstance<
     })
     return this
   }
-  off(event: FexiosLifecycleEvents, action: FexiosHook<any>) {
-    this.hooks = this.hooks.filter(
-      (hook) => hook.event !== event || hook.action !== action
-    )
+  off(event: FexiosLifecycleEvents | '*' | null, action: FexiosHook<any>) {
+    if (event === '*' || !event) {
+      this.hooks = this.hooks.filter((hook) => hook.action !== action)
+    } else {
+      this.hooks = this.hooks.filter(
+        (hook) => hook.event !== event || hook.action !== action
+      )
+    }
     return this
   }
 
@@ -452,19 +456,25 @@ export class Fexios extends CallableInstance<
       }
 
       // If the data resolved as a string above, try to parse it as JSON
-      if (
-        typeof res.data === 'string' &&
-        expectType !== 'text' &&
-        (expectType === 'json' || contentType.startsWith('application/json'))
-      ) {
+      if (expectType === 'json' || contentType.startsWith('application/json')) {
+        try {
+          res.data = JSON.parse(res.data as string) as T
+        } catch (e) {
+          console.warn('Failed to parse response data as JSON:', e)
+        }
+      }
+      if (typeof res.data === 'string' && expectType !== 'text') {
+        const trimmedData = (res.data as string).trim()
+        const firstChar = trimmedData[0]
+        const lastChar = trimmedData[trimmedData.length - 1]
         if (
-          (res.data[0] === '{' && res.data[res.data.length - 1] === '}') ||
-          (res.data[0] === '[' && res.data[res.data.length - 1] === ']')
+          (firstChar === '{' && lastChar === '}') ||
+          (firstChar === '[' && lastChar === ']')
         ) {
           try {
             res.data = JSON.parse(res.data as string) as T
-          } catch (e) {
-            console.warn('Failed to parse response data as JSON:', e)
+          } catch (_) {
+            // NOOP
           }
         }
       }
