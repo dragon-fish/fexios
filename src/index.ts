@@ -1,4 +1,5 @@
 import CallableInstance from 'callable-instance'
+import { retry } from './utils/retry'
 
 /**
  * Fexios
@@ -15,6 +16,7 @@ export class Fexios extends CallableInstance<
   ],
   Promise<FexiosFinalContext<any>>
 > {
+  fetch: typeof fetch
   protected hooks: FexiosHookStore[] = []
   readonly DEFAULT_CONFIGS: FexiosConfigs = {
     baseURL: '',
@@ -23,6 +25,9 @@ export class Fexios extends CallableInstance<
     headers: {},
     query: {},
     responseType: undefined,
+    retry: 0,
+    retryDelay: 0,
+    shouldRetry: undefined,
   }
   private readonly ALL_METHODS: FexiosMethods[] = [
     'get',
@@ -44,6 +49,12 @@ export class Fexios extends CallableInstance<
   constructor(public baseConfigs: Partial<FexiosConfigs> = {}) {
     super('request')
     this.ALL_METHODS.forEach(this.createMethodShortcut.bind(this))
+    this.fetch = baseConfigs.fetch || globalThis?.fetch || window?.fetch
+    if (!this.fetch) {
+      throw new Error(
+        'Fetch API is not supported in this environment. Please provide a fetch implementation.'
+      )
+    }
   }
 
   async request<T = any>(
@@ -173,36 +184,50 @@ export class Fexios extends CallableInstance<
       return this.emit('afterResponse', ctx) as any
     }
 
-    const timeout = ctx.timeout || this.baseConfigs.timeout || 60 * 1000
-    const timer = setTimeout(() => {
-      abortController?.abort()
-      if (!abortController) {
-        throw new FexiosError(
-          FexiosErrorCodes.TIMEOUT,
-          `Request timed out after ${timeout}ms`,
-          ctx
-        )
-      }
-    }, timeout)
-    const rawResponse = await fetch(ctx.rawRequest!).catch((err) => {
-      throw new FexiosError(FexiosErrorCodes.NETWORK_ERROR, err.message, ctx)
-    })
+    const retries = options.retry ?? this.baseConfigs.retry ?? 0
+    const retryDelay = options.retryDelay ?? this.baseConfigs.retryDelay ?? 0
+    const shouldRetry =
+      options.shouldRetry ??
+      this.baseConfigs.shouldRetry ??
+      this.defaultShouldRetry
+    const fetchFn = async () => {
+      const timeout = ctx.timeout || this.baseConfigs.timeout || 60 * 1000
+      const timer = setTimeout(() => {
+        abortController?.abort()
+        if (!abortController) {
+          throw new FexiosError(
+            FexiosErrorCodes.TIMEOUT,
+            `Request timed out after ${timeout}ms`,
+            ctx
+          )
+        }
+      }, timeout)
+      const rawResponse = await this.fetch(ctx.rawRequest!).catch((err) => {
+        throw new FexiosError(FexiosErrorCodes.NETWORK_ERROR, err.message, ctx)
+      })
 
-    ctx.rawResponse = rawResponse
-    ctx.response = await Fexios.resolveResponseBody(
-      rawResponse,
-      ctx.responseType,
-      (progress, buffer) => {
-        console.info('Download progress:', progress)
-        options?.onProgress?.(progress, buffer)
-      }
-    ).finally(() => {
-      clearTimeout(timer)
-    })
-    ctx.data = ctx.response.data
-    ctx.headers = ctx.response.headers
+      ctx.rawResponse = rawResponse
+      ctx.response = await Fexios.resolveResponseBody(
+        rawResponse,
+        ctx.responseType,
+        (progress, buffer) => {
+          console.info('Download progress:', progress)
+          options?.onProgress?.(progress, buffer)
+        }
+      ).finally(() => {
+        clearTimeout(timer)
+      })
+      ctx.data = ctx.response.data
+      ctx.headers = ctx.response.headers
 
-    return this.emit('afterResponse', ctx) as any
+      return this.emit('afterResponse', ctx) as any
+    }
+    return retry(fetchFn, {
+      retries,
+      delay: retryDelay,
+      shouldRetry,
+      signal: abortController?.signal,
+    })
   }
 
   mergeQuery(
@@ -370,7 +395,7 @@ export class Fexios extends CallableInstance<
   ): Promise<FexiosResponse<T>> {
     if (rawResponse.bodyUsed) {
       throw new FexiosError(
-        'BODY_USED',
+        FexiosErrorCodes.BODY_USED,
         'Response body has already been used or locked'
       )
     }
@@ -530,6 +555,25 @@ export class Fexios extends CallableInstance<
     }
   }
 
+  readonly DEFAULT_RETRY_STATUS_CODES = [408, 409, 425, 429, 500, 502, 503, 504]
+  defaultShouldRetry(error: any, attempt: number) {
+    if (error instanceof FexiosResponseError) {
+      if (
+        [FexiosErrorCodes.TIMEOUT, FexiosErrorCodes.ABORTED_BY_HOOK].includes(
+          error.code as FexiosErrorCodes
+        )
+      ) {
+        return false
+      }
+      return (
+        this.DEFAULT_RETRY_STATUS_CODES.includes(error.response.status) ||
+        error.response.status >= 500 ||
+        error.code === FexiosErrorCodes.NETWORK_ERROR
+      )
+    }
+    return false
+  }
+
   extends(configs: Partial<FexiosConfigs>) {
     const fexios = new Fexios({ ...this.baseConfigs, ...configs })
     fexios.hooks = [...this.hooks]
@@ -609,8 +653,20 @@ export class FexiosResponseError<T> extends FexiosError {
 /**
  * Check if the error is a FexiosError that not caused by Response error
  */
-export const isFexiosError = (e: any): boolean => {
+export const isFexiosError = (e: any) => {
   return !(e instanceof FexiosResponseError) && e instanceof FexiosError
+}
+export const isFexiosResponseError = (e: any): boolean => {
+  return e instanceof FexiosResponseError
+}
+export const getFexiosResponse = (e: any): FexiosResponse | undefined => {
+  if (e instanceof FexiosResponse) {
+    return e
+  } else if (e?.response instanceof FexiosResponse) {
+    return e.response
+  } else if (e instanceof FexiosResponseError) {
+    return e.context?.response
+  }
 }
 
 // Support for direct import
@@ -632,6 +688,7 @@ if (typeof globalThis !== 'undefined') {
 
 export type AwaitAble<T = unknown> = Promise<T> | T
 export interface FexiosConfigs {
+  fetch?: typeof fetch
   baseURL: string
   timeout: number
   query: Record<string, string | number | boolean> | URLSearchParams
@@ -640,6 +697,9 @@ export interface FexiosConfigs {
   cache?: RequestInit['cache']
   mode?: RequestInit['mode']
   responseType?: 'json' | 'blob' | 'text' | 'stream'
+  retry?: number
+  retryDelay?: number
+  shouldRetry?: (error: any, attempt: number) => boolean
 }
 export interface FexiosRequestOptions extends FexiosConfigs {
   url?: string | URL
