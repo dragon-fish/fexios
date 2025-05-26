@@ -15,7 +15,7 @@ jobs:
     # Test on multiple Node.js versions that support fetch
     strategy:
       matrix:
-        node-version: ['16.15.0', '18', 'lts/*', 'latest']
+        node-version: ['lts/*', 'latest']
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -29,12 +29,13 @@ jobs:
 
       - name: Install dependencies
         run: |
-          npm install
+          npm install -g pnpm
+          pnpm install
 
       - name: Run build
         run: |
-          npm run build
+          pnpm run build
 
       - name: Run tests
         run: |
-          npm run test
+          pnpm run test
