@@ -136,17 +136,12 @@ export class Fexios extends CallableInstance<
 
     // Adjust content-type header
     if (!(options.headers as any)?.['content-type'] && body) {
-      // If body is FormData or URLSearchParams, simply delete content-type header to let Request constructor handle it
-      if (!(body instanceof FormData || body instanceof URLSearchParams)) {
+      if (body instanceof FormData || body instanceof URLSearchParams) {
+        // Let the browser automatically set content-type for FormData/URLSearchParams
         delete (ctx.headers as any)['content-type']
-      }
-      // If body is a string and ctx.body is an object, it means ctx.body is a JSON string
-      else if (typeof body === 'string' && typeof ctx.body === 'object') {
-        ;(ctx.headers as any)['content-type'] =
-          'application/json; charset=UTF-8'
-      }
-      // If body is a Blob, set content-type header to the Blob's type
-      else if (body instanceof Blob) {
+      } else if (typeof body === 'string' && typeof ctx.body === 'object') {
+        ;(ctx.headers as any)['content-type'] = 'application/json'
+      } else if (body instanceof Blob) {
         ;(ctx.headers as any)['content-type'] = body.type
       }
     }
@@ -171,50 +166,118 @@ export class Fexios extends CallableInstance<
 
     ctx = await this.emit('beforeActualFetch', ctx)
 
+    const timeout = ctx.timeout || this.baseConfigs.timeout || 60 * 1000
+
     if (ctx.url.startsWith('ws')) {
       console.info('WebSocket:', ctx.url)
-      const ws = new WebSocket(ctx.url)
-      ctx.rawResponse = new Response()
-      ctx.response = new FexiosResponse(ctx.rawResponse, ws as any, {
-        ok: true,
-        status: 101,
-        statusText: 'Switching Protocols',
-      })
-      ctx.data = ws
-      ctx.headers = new Headers()
-      return this.emit('afterResponse', ctx) as any
-    }
+      try {
+        const ws = new WebSocket(ctx.url)
 
-    const timeout = ctx.timeout || this.baseConfigs.timeout || 60 * 1000
-    const timer = setTimeout(() => {
-      abortController?.abort()
-      if (!abortController) {
+        // Wait for connection to establish or fail
+        await new Promise<void>((resolve, reject) => {
+          const connectionTimeout = setTimeout(() => {
+            ws.close()
+            reject(
+              new FexiosError(
+                FexiosErrorCodes.TIMEOUT,
+                'WebSocket connection timeout',
+                ctx
+              )
+            )
+          }, timeout)
+
+          ws.onopen = () => {
+            clearTimeout(connectionTimeout)
+            resolve()
+          }
+          ws.onerror = (event) => {
+            clearTimeout(connectionTimeout)
+            ws.close()
+            reject(
+              new FexiosError(
+                FexiosErrorCodes.NETWORK_ERROR,
+                'WebSocket connection failed',
+                ctx
+              )
+            )
+          }
+          ws.onclose = (event) => {
+            clearTimeout(connectionTimeout)
+            // Only reject if the closure wasn't normal and we haven't resolved yet
+            if (event.code !== 1000) {
+              // 1000 = normal closure
+              reject(
+                new FexiosError(
+                  FexiosErrorCodes.NETWORK_ERROR,
+                  `WebSocket closed with code ${event.code}`,
+                  ctx
+                )
+              )
+            }
+          }
+        })
+
+        ctx.rawResponse = new Response()
+        ctx.response = new FexiosResponse(ctx.rawResponse, ws as any, {
+          ok: true,
+          status: 101,
+          statusText: 'Switching Protocols',
+        })
+        ctx.data = ws
+        ctx.headers = new Headers()
+        return this.emit('afterResponse', ctx) as any
+      } catch (error) {
+        if (error instanceof FexiosError) {
+          throw error
+        }
         throw new FexiosError(
-          FexiosErrorCodes.TIMEOUT,
-          `Request timed out after ${timeout}ms`,
+          FexiosErrorCodes.NETWORK_ERROR,
+          `WebSocket creation failed: ${error}`,
           ctx
         )
       }
-    }, timeout)
-    const rawResponse = await fetch(ctx.rawRequest!).catch((err) => {
-      throw new FexiosError(FexiosErrorCodes.NETWORK_ERROR, err.message, ctx)
-    })
+    }
 
-    ctx.rawResponse = rawResponse
-    ctx.response = await Fexios.resolveResponseBody(
-      rawResponse,
-      ctx.responseType,
-      (progress, buffer) => {
-        console.info('Download progress:', progress)
-        options?.onProgress?.(progress, buffer)
+    let timer: NodeJS.Timeout | undefined
+
+    try {
+      if (abortController) {
+        timer = setTimeout(() => {
+          abortController.abort()
+        }, timeout)
       }
-    ).finally(() => {
-      clearTimeout(timer)
-    })
-    ctx.data = ctx.response.data
-    ctx.headers = ctx.response.headers
 
-    return this.emit('afterResponse', ctx) as any
+      const rawResponse = await fetch(ctx.rawRequest!).catch((err) => {
+        if (timer) clearTimeout(timer)
+        if (abortController?.signal.aborted) {
+          throw new FexiosError(
+            FexiosErrorCodes.TIMEOUT,
+            `Request timed out after ${timeout}ms`,
+            ctx
+          )
+        }
+        throw new FexiosError(FexiosErrorCodes.NETWORK_ERROR, err.message, ctx)
+      })
+
+      if (timer) clearTimeout(timer)
+
+      ctx.rawResponse = rawResponse
+      ctx.response = await Fexios.resolveResponseBody(
+        rawResponse,
+        ctx.responseType,
+        (progress, buffer) => {
+          console.info('Download progress:', progress)
+          options?.onProgress?.(progress, buffer)
+        }
+      )
+      ctx.data = ctx.response.data
+      ctx.headers = ctx.response.headers
+
+      return this.emit('afterResponse', ctx) as any
+    } catch (error) {
+      if (timer) clearTimeout(timer)
+      throw error
+    }
   }
 
   mergeQuery(
@@ -223,32 +286,27 @@ export class Fexios extends CallableInstance<
   ): Record<string, any> {
     const result: Record<string, any> = {}
 
-    if (base) {
-      const baseQuery = new URLSearchParams(base)
-      baseQuery.forEach((value, key) => {
-        result[key] = value
-      })
-    }
+    const processQuerySource = (source: typeof base) => {
+      if (!source) return
 
-    for (const item of income) {
-      if (item === undefined || item === null) continue
-
-      const isPlainInput = this.checkIsPlainObject(item)
-      if (isPlainInput) {
-        Object.entries(item).forEach(([key, value]) => {
+      if (this.checkIsPlainObject(source)) {
+        Object.entries(source).forEach(([key, value]) => {
           if (value === undefined || value === null) {
             delete result[key]
           } else {
-            result[key] = String(value)
+            result[key] = Array.isArray(value) ? value.join(',') : String(value)
           }
         })
       } else {
-        const curQuery = new URLSearchParams(item)
-        curQuery.forEach((value, key) => {
+        const query = new URLSearchParams(source)
+        query.forEach((value, key) => {
           result[key] = value
         })
       }
     }
+
+    processQuerySource(base)
+    income.forEach(processQuerySource)
 
     return result
   }
@@ -463,13 +521,28 @@ export class Fexios extends CallableInstance<
   ): Promise<FexiosResponse<T>> {
     if (rawResponse.bodyUsed) {
       throw new FexiosError(
-        'BODY_USED',
+        FexiosErrorCodes.BODY_USED,
         'Response body has already been used or locked'
       )
     }
 
     const contentType = rawResponse.headers.get('content-type') || ''
     const contentLength = Number(rawResponse.headers.get('content-length')) || 0
+
+    // Helper methods for content type checking
+    const isJsonContent = (contentType: string, expectType?: string) =>
+      expectType === 'json' || contentType.startsWith('application/json')
+
+    const isBinaryContent = (
+      contentType: string,
+      buffer: Uint8Array,
+      expectType?: string
+    ) =>
+      expectType === 'blob' ||
+      contentType.startsWith('image/') ||
+      contentType.startsWith('video/') ||
+      contentType.startsWith('audio/') ||
+      !this.isText(buffer)
 
     // Check if the response is a WebSocket
     if (
@@ -524,22 +597,20 @@ export class Fexios extends CallableInstance<
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
-        buffer = new Uint8Array([...buffer, ...value])
-        if (onProgress && contentLength) {
-          onProgress(buffer.length / contentLength, buffer)
+
+        if (value) {
+          buffer = new Uint8Array([...buffer, ...value])
+          if (onProgress && contentLength > 0) {
+            const progress = Math.min(buffer.length / contentLength, 1)
+            onProgress(progress, buffer)
+          }
         }
       }
 
       const res = new FexiosResponse(rawResponse, undefined as any)
 
       // Guess the response type, maybe a Blob?
-      if (
-        expectType === 'blob' ||
-        contentType.startsWith('image/') ||
-        contentType.startsWith('video/') ||
-        contentType.startsWith('audio/') ||
-        !this.isText(buffer)
-      ) {
+      if (isBinaryContent(contentType, buffer, expectType)) {
         res.data = new Blob([buffer], {
           type: rawResponse.headers.get('content-type') || undefined,
         }) as Blob as T
@@ -550,7 +621,7 @@ export class Fexios extends CallableInstance<
       }
 
       // If the data resolved as a string above, try to parse it as JSON
-      if (expectType === 'json' || contentType.startsWith('application/json')) {
+      if (isJsonContent(contentType, expectType)) {
         try {
           res.data = JSON.parse(res.data as string) as T
         } catch (e) {
