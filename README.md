@@ -1,6 +1,8 @@
 <div align="center">
 
 # Fexios
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fdragon-fish%2Ffexios.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fdragon-fish%2Ffexios?ref=badge_shield)
+
 
 类 Axios 语法的原生 fetch API 请求封装库<br>
 Fetch based HTTP client with similar API to axios for browser and Node.js
@@ -268,3 +270,7 @@ fexios.interceptors.response.use((ctx) => {})
 > MIT License
 >
 > Copyright (c) 2023 机智的小鱼君 (A.K.A. Dragon-Fish)
+
+
+## License
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fdragon-fish%2Ffexios.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Fdragon-fish%2Ffexios?ref=badge_large)
