@@ -3,7 +3,6 @@ import fexios, {
   Fexios,
   FexiosError,
   FexiosFinalContext,
-  FexiosResponse,
   FexiosResponseError,
   isFexiosError,
 } from '../src/index'
@@ -70,6 +69,64 @@ describe('Fexios Core', () => {
       two: '222',
       three: '333',
     })
+  })
+
+  it('Query/Headers Priority: requestOptions > requestURL > defaultOptions > baseURL', async () => {
+    // Create fexios with baseURL containing query params and default options
+    const testFexios = new Fexios({
+      baseURL: `${ECHO_BASE_URL}/?source=baseURL&priority=1&keep=base`,
+      query: {
+        source: 'defaultOptions',
+        priority: 2,
+        default: 'option',
+      },
+    })
+
+    const { data } = await testFexios.get<EchoResponse>(
+      '/path?source=requestURL&priority=3&url=param',
+      {
+        query: {
+          source: 'requestOptions',
+          priority: 4,
+          request: 'option',
+        },
+      }
+    )
+
+    // Verify priority: requestOptions wins
+    expect(data.searchParams.source).to.equal('requestOptions')
+    expect(data.searchParams.priority).to.equal('4')
+
+    // Verify each level contributes unique parameters
+    expect(data.searchParams.keep).to.equal('base') // from baseURL
+    expect(data.searchParams.default).to.equal('option') // from defaultOptions
+    expect(data.searchParams.url).to.equal('param') // from requestURL
+    expect(data.searchParams.request).to.equal('option') // from requestOptions
+  })
+
+  it('Handle undefined/null query parameters correctly', async () => {
+    const testFexios = new Fexios({ baseURL: ECHO_BASE_URL })
+
+    const { data } = await testFexios.get<EchoResponse>('/test', {
+      query: {
+        keep: 'value',
+        empty: '',
+        zero: 0,
+        falsy: false,
+        undef: undefined,
+        nullVal: null,
+      },
+    })
+
+    // Falsy values that are not undefined/null should be kept
+    expect(data.searchParams.keep).to.equal('value')
+    expect(data.searchParams.empty).to.equal('')
+    expect(data.searchParams.zero).to.equal('0')
+    expect(data.searchParams.falsy).to.equal('false')
+
+    // undefined and null should be filtered out
+    expect(data.searchParams.undef).to.be.undefined
+    expect(data.searchParams.nullVal).to.be.undefined
   })
 
   it('GET should not have body', async () => {
