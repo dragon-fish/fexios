@@ -81,10 +81,23 @@ export class Fexios extends CallableInstance<
       this.baseConfigs.headers,
       options.headers
     ) as any
+
+    // Extract query parameters from different sources
+    // Priority: requestOptions > requestURL > defaultOptions > baseURL
+    const baseUrlQuery = baseURL?.searchParams
+    // Create a copy of requestUrlQuery before clearing the URL search params
+    const requestUrlQuery = new URLSearchParams(reqURL.searchParams)
+
+    // Clear the URL search params temporarily
+    reqURL.search = ''
+    ctx.url = reqURL.href
+
+    // prettier-ignore
     ctx.query = this.mergeQuery(
-      this.baseConfigs.query,
-      reqURL.searchParams,
-      options.query
+      baseUrlQuery,           // baseURL query (lowest priority)
+      this.baseConfigs.query, // defaultOptions (baseOptions)
+      requestUrlQuery,        // requestURL query (urlParams)
+      options.query           // requestOptions (highest priority)
     )
 
     reqURL.search = new URLSearchParams(ctx.query as any).toString()
@@ -113,10 +126,9 @@ export class Fexios extends CallableInstance<
         ctx.body instanceof URLSearchParams
       ) {
         body = ctx.body
-      } else if (typeof ctx.body === 'object') {
+      } else if (typeof ctx.body === 'object' && ctx.body !== null) {
         body = JSON.stringify(ctx.body)
-        ;(ctx.headers as any)['content-type'] =
-          'application/json; charset=UTF-8'
+        ;(ctx.headers as any)['content-type'] = 'application/json'
       } else {
         body = ctx.body
       }
@@ -209,31 +221,112 @@ export class Fexios extends CallableInstance<
     base: Record<string, any> | string | URLSearchParams | undefined,
     ...income: (Record<string, any> | string | URLSearchParams | undefined)[]
   ): Record<string, any> {
-    const baseQuery = new URLSearchParams(base)
-    for (const incomeQuery of income) {
-      const params = new URLSearchParams(incomeQuery)
-      params.forEach((value, key) => {
-        baseQuery.set(key, value)
+    const result: Record<string, any> = {}
+
+    if (base) {
+      const baseQuery = new URLSearchParams(base)
+      baseQuery.forEach((value, key) => {
+        result[key] = value
       })
     }
-    return Object.fromEntries(baseQuery)
+
+    for (const item of income) {
+      if (item === undefined || item === null) continue
+
+      const isPlainInput = this.checkIsPlainObject(item)
+      if (isPlainInput) {
+        Object.entries(item).forEach(([key, value]) => {
+          if (value === undefined || value === null) {
+            delete result[key]
+          } else {
+            result[key] = String(value)
+          }
+        })
+      } else {
+        const curQuery = new URLSearchParams(item)
+        curQuery.forEach((value, key) => {
+          result[key] = value
+        })
+      }
+    }
+
+    return result
   }
   mergeHeaders(
     base: Record<string, any> | Headers | undefined,
     ...income: (Record<string, any> | Headers | undefined)[]
-  ): Record<string, any> {
-    const headersObject: any = {}
+  ): Record<string, string> {
+    const obj: Record<string, string> = {}
     const baseHeaders = new Headers(base)
-    for (const incomeHeaders of income) {
-      const header = new Headers(incomeHeaders)
-      header.forEach((value, key) => {
-        baseHeaders.set(key, value)
-      })
+    for (const item of income) {
+      if (item === undefined || item === null) continue
+
+      const isPlainInput = this.checkIsPlainObject(item)
+      if (isPlainInput) {
+        const processedItem = this.dropUndefinedAndNull(item)
+        // Skip if after processing, the object is empty
+        if (Object.keys(processedItem).length === 0) continue
+
+        const header = new Headers(processedItem as Record<string, string>)
+        header.forEach((value, key) => {
+          baseHeaders.set(key, value)
+        })
+      } else {
+        const header = new Headers(item)
+        header.forEach((value, key) => {
+          baseHeaders.set(key, value)
+        })
+      }
     }
     baseHeaders.forEach((value, key) => {
-      headersObject[key] = value
+      obj[key] = value
     })
-    return headersObject
+    return obj
+  }
+
+  /**
+   * Remove all undefined and null properties from an object
+   * Also handles empty strings based on options
+   */
+  private dropUndefinedAndNull<T extends Record<string, any>>(
+    obj: T,
+    options: { dropEmptyString?: boolean } = {}
+  ): Partial<T> {
+    const newObj: Record<string, any> = {}
+    Object.entries(obj).forEach(([key, value]) => {
+      // Always drop undefined and null
+      if (value === undefined || value === null) {
+        return
+      }
+      // Optionally drop empty strings
+      if (options.dropEmptyString && value === '') {
+        return
+      }
+      newObj[key] = value
+    })
+    return newObj as Partial<T>
+  }
+  /**
+   * Check if given payload is a plain object
+   * "plain object", means it is not an instance of any class or built-in type,
+   * or just like Record<string, any> in TypeScript.
+   */
+  private checkIsPlainObject(payload: any): payload is Record<string, any> {
+    // exclude non-object and null values
+    if (typeof payload !== 'object' || payload === null) {
+      return false
+    }
+
+    // exclude built-in types like Date, RegExp, etc.
+    if (Object.prototype.toString.call(payload) !== '[object Object]') {
+      return false
+    }
+
+    // finally check the prototype chain
+    // if the prototype is Object.prototype or null, it's 99% a plain object
+    // Note: why proto === null is ok? // Object.create(null)
+    const proto = Object.getPrototypeOf(payload)
+    return proto === Object.prototype || proto === null
   }
 
   async emit<C = FexiosContext>(event: FexiosLifecycleEvents, ctx: C) {
@@ -419,7 +512,8 @@ export class Fexios extends CallableInstance<
     }
     // Check if the response is a ReadableStream
     else {
-      const reader = rawResponse.body?.getReader()
+      const responseCopy = rawResponse.clone()
+      const reader = responseCopy.body?.getReader()
       if (!reader) {
         throw new FexiosError(
           FexiosErrorCodes.NO_BODY_READER,
@@ -634,7 +728,7 @@ export type AwaitAble<T = unknown> = Promise<T> | T
 export interface FexiosConfigs {
   baseURL: string
   timeout: number
-  query: Record<string, string | number | boolean> | URLSearchParams
+  query: Record<string, any> | URLSearchParams
   headers: Record<string, string> | Headers
   credentials?: RequestInit['credentials']
   cache?: RequestInit['cache']
