@@ -11,11 +11,11 @@ jobs:
   test:
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
-    
+
     # Test on multiple Node.js versions that support fetch
     strategy:
       matrix:
-        node-version: ['16.15.0', '18', '22', 'latest']
+        node-version: ['16.15.0', '18', 'lts/*', 'latest']
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -29,13 +29,12 @@ jobs:
 
       - name: Install dependencies
         run: |
-          npm i -g pnpm
-          pnpm i
+          npm install
 
       - name: Run build
         run: |
-          pnpm build
+          npm run build
 
       - name: Run tests
         run: |
-          pnpm test
+          npm run test
