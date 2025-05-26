@@ -5,11 +5,11 @@ import { EchoResponse } from './MockData'
 import { ECHO_BASE_URL } from './constants'
 
 // create a fake png file with 1x1 pixel
-const fileName = 'test.png'
-const fileBase64 =
+const imageName = 'test.png'
+const imageBase64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR42mMAAQAABQABoIJXOQAAAABJRU5ErkJggg=='
-const fileDataURL = `data:image/png;base64,${fileBase64}`
-const fileFile = dataURLtoFile(fileDataURL, fileName)
+const imageDataURL = `data:image/png;base64,${imageBase64}`
+const imageFile = dataURLtoFile(imageDataURL, imageName)
 
 function dataURLtoFile(dataurl: string, filename: string): File {
   const arr = dataurl.split(',')
@@ -42,24 +42,24 @@ describe('Fexios File Uploads', () => {
   it('Upload file directly', async () => {
     const { data } = await fexios.post<EchoResponse>(
       `${ECHO_BASE_URL}/post`,
-      fileFile
+      imageFile
     )
 
     const fileInfo = data.binaryFiles?.[0]!
     expect(fileInfo).not.to.be.undefined
     expect(fileInfo.type).to.equal('image/png')
-    expect(fileInfo.base64).to.equal(fileBase64)
+    expect(fileInfo.base64).to.equal(imageBase64)
   })
 
   it('Upload file with Form', async () => {
     const form = new FormData()
-    form.append(fileName, fileFile)
+    form.append(imageName, imageFile)
 
     const { data } = await fexios.post<EchoResponse>(
       `${ECHO_BASE_URL}/post`,
       form
     )
 
-    expect(data.binaryFiles?.[0]?.name).to.equal(fileName)
+    expect(data.binaryFiles?.[0]?.name).to.equal(imageName)
   })
 })
