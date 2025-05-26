@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeAll, afterAll, beforeEach } from 'vitest'
-import { Fexios } from '../src/index'
+import { Fexios, FexiosQueryBuilder } from '../src/index'
 
 /**
  * What is the priority of query/headers merging in Fexios?
@@ -148,9 +148,14 @@ describe('Merge Methods - Query and Headers', () => {
       expect(result).toEqual({ 'x-custom': 'value', a: '1', b: '2' })
     })
 
-    it('should handle array values by converting to string', () => {
+    it('should handle array values by creating multiple query parameters', () => {
       const result = fexios.mergeQuery({ a: '1' }, { b: [1, 2, 3], c: 'test' })
-      expect(result).toEqual({ a: '1', b: '1,2,3', c: 'test' })
+      expect(result).toEqual({ a: '1', b: ['1', '2', '3'], c: 'test' })
+    })
+
+    it('should handle array values with [] suffix by creating multiple query parameters', () => {
+      const result = fexios.mergeQuery({ a: '1' }, { 'b[]': [1, 2, 3], c: 'test' })
+      expect(result).toEqual({ a: '1', 'b[]': ['1', '2', '3'], c: 'test' })
     })
   })
 
@@ -592,6 +597,118 @@ describe('Merge Methods - Query and Headers', () => {
         const calledUrl = mockFetch.mock.calls[0][0].url
         expect(calledUrl).toBe('https://example.com/path?from=requestOptions')
       })
+    })
+
+    it('should handle array query parameters in actual requests', async () => {
+      const testFexios = new Fexios({ baseURL: 'https://api.example.com' })
+
+      await testFexios.get('/test', {
+        query: {
+          foo: ['bar', 'baz'],
+          single: 'value',
+        },
+      })
+
+      const calledUrl = mockFetch.mock.calls[0][0].url
+      const url = new URL(calledUrl)
+      
+      // Should have multiple foo parameters
+      expect(url.searchParams.getAll('foo')).toEqual(['bar', 'baz'])
+      expect(url.searchParams.get('single')).toBe('value')
+      
+      // Check the actual URL string format
+      expect(calledUrl).toContain('foo=bar')
+      expect(calledUrl).toContain('foo=baz')
+      expect(calledUrl).toContain('single=value')
+    })
+
+    it('should handle array query parameters with [] suffix', async () => {
+      const testFexios = new Fexios({ baseURL: 'https://api.example.com' })
+
+      await testFexios.get('/test', {
+        query: {
+          'arr[]': ['bar', 'baz'],
+          single: 'value',
+        },
+      })
+
+      const calledUrl = mockFetch.mock.calls[0][0].url
+      const url = new URL(calledUrl)
+      
+      // Should have multiple arr[] parameters
+      expect(url.searchParams.getAll('arr[]')).toEqual(['bar', 'baz'])
+      expect(url.searchParams.get('single')).toBe('value')
+      
+      // Check the actual URL string format (URL-encoded)
+      expect(calledUrl).toContain('arr%5B%5D=bar')
+      expect(calledUrl).toContain('arr%5B%5D=baz')
+      expect(calledUrl).toContain('single=value')
+    })
+  })
+
+  describe('QueryBuilder', () => {
+    it('should build basic query string', () => {
+      const query = { a: '1', b: '2', c: 'test' }
+      const result = FexiosQueryBuilder.makeQueryString(query)
+      expect(result).toBe('a=1&b=2&c=test')
+    })
+
+    it('should handle array values by creating multiple entries', () => {
+      const query = { foo: ['bar', 'baz'], single: 'value' }
+      const searchParams = FexiosQueryBuilder.makeSearchParams(query)
+      
+      expect(searchParams.getAll('foo')).toEqual(['bar', 'baz'])
+      expect(searchParams.get('single')).toBe('value')
+      
+      const queryString = FexiosQueryBuilder.makeQueryString(query)
+      expect(queryString).toContain('foo=bar')
+      expect(queryString).toContain('foo=baz')
+      expect(queryString).toContain('single=value')
+    })
+
+    it('should handle array values with [] suffix', () => {
+      const query = { 'arr[]': ['bar', 'baz'], single: 'value' }
+      const searchParams = FexiosQueryBuilder.makeSearchParams(query)
+      
+      expect(searchParams.getAll('arr[]')).toEqual(['bar', 'baz'])
+      expect(searchParams.get('single')).toBe('value')
+      
+      const queryString = FexiosQueryBuilder.makeQueryString(query)
+      expect(queryString).toContain('arr%5B%5D=bar')
+      expect(queryString).toContain('arr%5B%5D=baz')
+      expect(queryString).toContain('single=value')
+    })
+
+    it('should handle mixed types by converting to strings', () => {
+      const query = { 
+        str: 'test',
+        num: 123,
+        bool: true,
+        arr: [1, 2, 'three']
+      }
+      const searchParams = FexiosQueryBuilder.makeSearchParams(query)
+      
+      expect(searchParams.get('str')).toBe('test')
+      expect(searchParams.get('num')).toBe('123')
+      expect(searchParams.get('bool')).toBe('true')
+      expect(searchParams.getAll('arr')).toEqual(['1', '2', 'three'])
+    })
+
+    it('should handle empty arrays', () => {
+      const query = { empty: [], single: 'value' }
+      const searchParams = FexiosQueryBuilder.makeSearchParams(query)
+      
+      expect(searchParams.getAll('empty')).toEqual([])
+      expect(searchParams.get('single')).toBe('value')
+      
+      const queryString = FexiosQueryBuilder.makeQueryString(query)
+      expect(queryString).toBe('single=value')
+    })
+
+    it('should handle empty object', () => {
+      const query = {}
+      const result = FexiosQueryBuilder.makeQueryString(query)
+      expect(result).toBe('')
     })
   })
 })
