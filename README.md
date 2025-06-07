@@ -1,6 +1,7 @@
 <div align="center">
 
 # Fexios
+
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fdragon-fish%2Ffexios.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fdragon-fish%2Ffexios?ref=badge_shield)
 
 
@@ -267,10 +268,10 @@ fexios.interceptors.response.use((ctx) => {})
 
 ---
 
+## License
+
 > MIT License
 >
 > Copyright (c) 2023 机智的小鱼君 (A.K.A. Dragon-Fish)
 
-
-## License
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fdragon-fish%2Ffexios.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Fdragon-fish%2Ffexios?ref=badge_large)
