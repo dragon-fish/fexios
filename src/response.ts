@@ -54,7 +54,8 @@ export async function resolveResponseBody<T = any>(
     expectType?: string
   ) =>
     expectType === 'blob' ||
-    contentType.startsWith('image/') ||
+    (contentType.startsWith('image/') &&
+      !contentType.startsWith('image/svg')) ||
     contentType.startsWith('video/') ||
     contentType.startsWith('audio/') ||
     !checkIfTextData(buffer)
@@ -124,25 +125,34 @@ export async function resolveResponseBody<T = any>(
 
     const res = new FexiosResponse(rawResponse, undefined as any)
 
-    // Guess the response type, maybe a Blob?
-    if (isBinaryContent(contentType, buffer, expectType)) {
-      res.data = new Blob([buffer], {
-        type: rawResponse.headers.get('content-type') || undefined,
-      }) as Blob as T
-    }
-    // Otherwise, try to decode the buffer as text
-    else {
-      res.data = new TextDecoder().decode(buffer) as T
+    if (expectType === 'arrayBuffer') {
+      res.data = buffer.buffer as T
+      return res
     }
 
-    // If the data resolved as a string above, try to parse it as JSON
+    // If request expects JSON, try to parse it
     if (isJsonContent(contentType, expectType)) {
       try {
-        res.data = JSON.parse(res.data as string) as T
+        const jsonString = new TextDecoder().decode(buffer)
+        res.data = JSON.parse(jsonString) as T
       } catch (e) {
         console.warn('Failed to parse response data as JSON:', e)
       }
     }
+
+    // Guess the response type, maybe a Blob?
+    if (
+      typeof res.data !== 'string' &&
+      isBinaryContent(contentType, buffer, expectType)
+    ) {
+      res.data = new Blob([buffer], {
+        type: rawResponse.headers.get('content-type') || undefined,
+      }) as Blob as T
+    } else {
+      // Otherwise, try to decode the buffer as text
+      res.data = new TextDecoder().decode(buffer) as T
+    }
+
     if (typeof res.data === 'string' && expectType !== 'text') {
       const trimmedData = (res.data as string).trim()
       const firstChar = trimmedData[0]

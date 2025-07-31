@@ -12,7 +12,7 @@ export interface FexiosConfigs {
   credentials?: RequestInit['credentials']
   cache?: RequestInit['cache']
   mode?: RequestInit['mode']
-  responseType?: 'json' | 'blob' | 'text' | 'stream'
+  responseType?: 'json' | 'blob' | 'text' | 'stream' | 'arrayBuffer'
 }
 
 export interface FexiosRequestOptions extends FexiosConfigs {
