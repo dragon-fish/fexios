@@ -4,6 +4,11 @@
 
 export type AwaitAble<T = unknown> = Promise<T> | T
 
+export type FetchLike = (
+  input: Request | string | URL,
+  init?: RequestInit
+) => Promise<Response>
+
 export interface FexiosConfigs {
   baseURL: string
   timeout: number
@@ -13,6 +18,7 @@ export interface FexiosConfigs {
   cache?: RequestInit['cache']
   mode?: RequestInit['mode']
   responseType?: 'json' | 'blob' | 'text' | 'stream' | 'arrayBuffer'
+  fetch?: FetchLike
 }
 
 export interface FexiosRequestOptions extends FexiosConfigs {
@@ -41,7 +47,9 @@ export type FexiosFinalContext<T = any> = Omit<
   data: T
 }
 
-export type FexiosHook<C = unknown> = (context: C) => AwaitAble<C | false>
+export type FexiosHook<C = unknown> = (
+  context: C
+) => AwaitAble<C | void | false>
 
 export interface FexiosHookStore {
   event: FexiosLifecycleEvents

@@ -29,15 +29,16 @@ export class Fexios extends CallableInstance<
   Promise<FexiosFinalContext<any>>
 > {
   protected hooks: FexiosHookStore[] = []
-  readonly DEFAULT_CONFIGS: FexiosConfigs = {
+  static readonly DEFAULT_CONFIGS: FexiosConfigs = {
     baseURL: '',
     timeout: 60 * 1000,
     credentials: 'same-origin',
     headers: {},
     query: {},
     responseType: undefined,
+    fetch: globalThis.fetch,
   }
-  private readonly ALL_METHODS: FexiosMethods[] = [
+  static readonly ALL_METHODS: FexiosMethods[] = [
     'get',
     'post',
     'put',
@@ -47,7 +48,7 @@ export class Fexios extends CallableInstance<
     'options',
     'trace',
   ]
-  private readonly METHODS_WITHOUT_BODY: FexiosMethods[] = [
+  static readonly METHODS_WITHOUT_BODY: FexiosMethods[] = [
     'get',
     'head',
     'options',
@@ -56,7 +57,9 @@ export class Fexios extends CallableInstance<
 
   constructor(public baseConfigs: Partial<FexiosConfigs> = {}) {
     super('request')
-    this.ALL_METHODS.forEach(this.createMethodShortcut.bind(this))
+    // TODO: Should be deep merge
+    baseConfigs = { ...Fexios.DEFAULT_CONFIGS, ...baseConfigs }
+    Fexios.ALL_METHODS.forEach(this.createMethodShortcut.bind(this))
   }
 
   async request<T = any>(
@@ -118,7 +121,7 @@ export class Fexios extends CallableInstance<
     ctx.url = reqURL.toString()
 
     if (
-      this.METHODS_WITHOUT_BODY.includes(
+      Fexios.METHODS_WITHOUT_BODY.includes(
         ctx.method?.toLocaleLowerCase() as FexiosMethods
       ) &&
       ctx.body
@@ -258,6 +261,7 @@ export class Fexios extends CallableInstance<
         }, timeout)
       }
 
+      const fetch = options.fetch || this.baseConfigs.fetch || globalThis.fetch
       const rawResponse = await fetch(ctx.rawRequest!).catch((err) => {
         if (timer) clearTimeout(timer)
         if (abortController?.signal.aborted) {
@@ -375,10 +379,15 @@ export class Fexios extends CallableInstance<
         const symbol = Symbol('FexiosHookContext')
         ;(ctx as any)[symbol] = symbol
 
-        const newCtx = (await hook.action.call(this, ctx)) as Awaited<C | false>
+        let hookResult = (await hook.action.call(this, ctx)) as Awaited<
+          C | void | false
+        >
+        if (hookResult === void 0) {
+          hookResult = ctx as any
+        }
 
         // Excepted abort signal
-        if (newCtx === false) {
+        if (hookResult === false) {
           throw new FexiosError(
             FexiosErrorCodes.ABORTED_BY_HOOK,
             `Request aborted by hook "${hookName}"`,
@@ -387,10 +396,10 @@ export class Fexios extends CallableInstance<
         }
         // Good
         else if (
-          typeof newCtx === 'object' &&
-          (newCtx as any)[symbol] === symbol
+          typeof hookResult === 'object' &&
+          (hookResult as any)[symbol] === symbol
         ) {
-          ctx = newCtx as C
+          ctx = hookResult as C
         }
         // Unexpected return value
         else {
@@ -399,7 +408,7 @@ export class Fexios extends CallableInstance<
           try {
             throw new FexiosError(
               FexiosErrorCodes.HOOK_CONTEXT_CHANGED,
-              `Hook "${hookName}" should return the original FexiosContext or return false to abort the request, but got "${newCtx}".`
+              `Hook "${hookName}" should return the original FexiosContext or return false to abort the request, but got "${hookResult}".`
             )
           } catch (e: any) {
             console.warn(e.stack || e)
@@ -476,7 +485,7 @@ export class Fexios extends CallableInstance<
         options?: Partial<FexiosRequestOptions>
       ) => {
         if (
-          this.METHODS_WITHOUT_BODY.includes(
+          Fexios.METHODS_WITHOUT_BODY.includes(
             method.toLocaleLowerCase() as FexiosMethods
           )
         ) {
