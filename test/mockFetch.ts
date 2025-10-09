@@ -69,10 +69,39 @@ export const mockFetch: FetchLike = async (
   input: Request | string | URL,
   init?: RequestInit
 ) => {
-  console.info('[mockFetch input]', input, init)
   const req =
     input instanceof Request ? input.clone() : new Request(input, init)
   const url = new URL(req.url)
+
+  // mock WebSocket upgrade response
+  if (url.pathname === '/_ws') {
+    // Return a response with upgrade header
+    // Note: We can't use status 101 in Response API, so use 200 with upgrade header
+    // This will trigger fexios to create a WebSocket based on the upgrade header
+    return new Response('', {
+      status: 200,
+      headers: {
+        'upgrade': 'websocket',
+        'connection': 'Upgrade',
+        'access-control-allow-origin': '*',
+      },
+    })
+  }
+
+  // mock SSE (Server-Sent Events)
+  if (url.pathname === '/_sse') {
+    // Return a response with text/event-stream content-type
+    // This will trigger fexios to create an EventSource
+    return new Response('', {
+      status: 200,
+      headers: {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+        'connection': 'keep-alive',
+        'access-control-allow-origin': '*',
+      },
+    })
+  }
 
   // mock blank.png
   if (url.pathname === '/_blank.png') {
@@ -101,7 +130,6 @@ export const mockFetch: FetchLike = async (
     req.headers,
     BINARY_FILES_FLAG
   )
-  console.info('[mockFetch Requst]', req)
 
   let bodyType: EchoResponseMetaBodyType =
     EchoResponseMetaBodyType.NOT_ACCEPTABLE
@@ -211,6 +239,211 @@ export const mockFetch: FetchLike = async (
       'content-type': 'application/json; charset=utf-8',
     },
   })
+}
+
+
+// Mock EventSource for SSE testing
+export class MockEventSource {
+  public url: string
+  public readyState: number = 0 // 0 = CONNECTING, 1 = OPEN, 2 = CLOSED
+  public onopen: ((event: any) => void) | null = null
+  public onmessage: ((event: any) => void) | null = null
+  public onerror: ((event: any) => void) | null = null
+  private messageInterval?: NodeJS.Timeout
+  private messageCount = 0
+  private maxMessages: number
+
+  constructor(url: string) {
+    this.url = url
+    // Parse timeout from query params
+    let timeout = 3
+    try {
+      const urlObj = new URL(url)
+      timeout = parseInt(urlObj.searchParams.get('timeout') || '3', 10)
+    } catch (e) {
+      // If URL parsing fails, use default timeout
+      console.warn('Failed to parse URL in MockEventSource:', e)
+    }
+    this.maxMessages = timeout
+
+    // Simulate connection opening
+    setTimeout(() => {
+      this.readyState = 1 // OPEN
+      if (this.onopen) {
+        this.onopen({ type: 'open' })
+      }
+      this.startSendingMessages()
+    }, 10)
+  }
+
+  private startSendingMessages() {
+    this.messageInterval = setInterval(() => {
+      if (this.readyState !== 1) {
+        this.stopSendingMessages()
+        return
+      }
+
+      if (this.messageCount >= this.maxMessages) {
+        this.stopSendingMessages()
+        return
+      }
+
+      this.messageCount++
+      if (this.onmessage) {
+        this.onmessage({
+          type: 'message',
+          data: `Message ${this.messageCount} from SSE`,
+          lastEventId: '',
+          origin: this.url,
+        })
+      }
+    }, 100)
+  }
+
+  private stopSendingMessages() {
+    if (this.messageInterval) {
+      clearInterval(this.messageInterval)
+      this.messageInterval = undefined
+    }
+  }
+
+  close() {
+    this.readyState = 2 // CLOSED
+    this.stopSendingMessages()
+  }
+
+  addEventListener(
+    type: string,
+    listener: (event: any) => void,
+    options?: any
+  ) {
+    if (type === 'open') {
+      this.onopen = listener
+    } else if (type === 'message') {
+      this.onmessage = listener
+    } else if (type === 'error') {
+      this.onerror = listener
+    }
+  }
+
+  removeEventListener(
+    type: string,
+    listener: (event: any) => void,
+    options?: any
+  ) {
+    if (type === 'open' && this.onopen === listener) {
+      this.onopen = null
+    } else if (type === 'message' && this.onmessage === listener) {
+      this.onmessage = null
+    } else if (type === 'error' && this.onerror === listener) {
+      this.onerror = null
+    }
+  }
+}
+
+// Mock WebSocket for testing
+export class MockWebSocket {
+  public url: string
+  public readyState: number = 0 // 0 = CONNECTING, 1 = OPEN, 2 = CLOSING, 3 = CLOSED
+  public onopen: ((event: any) => void) | null = null
+  public onmessage: ((event: any) => void) | null = null
+  public onerror: ((event: any) => void) | null = null
+  public onclose: ((event: any) => void) | null = null
+  private listeners: Map<string, Set<(event: any) => void>> = new Map()
+
+  constructor(url: string) {
+    this.url = url
+
+    // Simulate connection opening
+    setTimeout(() => {
+      this.readyState = 1 // OPEN
+      const openEvent = { type: 'open' }
+      if (this.onopen) {
+        this.onopen(openEvent)
+      }
+      this.triggerEventListeners('open', openEvent)
+
+      // Send initial message with URL (simulating echo server behavior)
+      setTimeout(() => {
+        const messageEvent = {
+          type: 'message',
+          data: this.url,
+        }
+        if (this.onmessage) {
+          this.onmessage(messageEvent)
+        }
+        this.triggerEventListeners('message', messageEvent)
+      }, 10)
+    }, 10)
+  }
+
+  send(data: any) {
+    if (this.readyState !== 1) {
+      throw new Error('WebSocket is not open')
+    }
+
+    // Echo the message back
+    setTimeout(() => {
+      const messageEvent = {
+        type: 'message',
+        data: data,
+      }
+      if (this.onmessage) {
+        this.onmessage(messageEvent)
+      }
+      this.triggerEventListeners('message', messageEvent)
+    }, 10)
+  }
+
+  close(code: number = 1000, reason: string = '') {
+    if (this.readyState === 2 || this.readyState === 3) {
+      return
+    }
+
+    this.readyState = 2 // CLOSING
+    setTimeout(() => {
+      this.readyState = 3 // CLOSED
+      const closeEvent = {
+        type: 'close',
+        code,
+        reason,
+        wasClean: code === 1000,
+      }
+      if (this.onclose) {
+        this.onclose(closeEvent)
+      }
+      this.triggerEventListeners('close', closeEvent)
+    }, 10)
+  }
+
+  addEventListener(
+    type: string,
+    listener: (event: any) => void,
+    options?: any
+  ) {
+    if (!this.listeners.has(type)) {
+      this.listeners.set(type, new Set())
+    }
+    this.listeners.get(type)!.add(listener)
+  }
+
+  removeEventListener(
+    type: string,
+    listener: (event: any) => void,
+    options?: any
+  ) {
+    const listeners = this.listeners.get(type)
+    if (listeners) {
+      listeners.delete(listener)
+    }
+  }
+
+  private triggerEventListeners(type: string, event: any) {
+    const listeners = this.listeners.get(type)
+    if (listeners) {
+      listeners.forEach((listener) => listener(event))
+    }
+  }
 }
 
 async function transformKeyValStructure(
