@@ -17,6 +17,7 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
       })
     )
     global.fetch = mockFetch
+    Fexios.DEFAULT_CONFIGS.fetch = mockFetch as any
   })
 
   beforeEach(() => {
@@ -25,6 +26,7 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
 
   afterAll(() => {
     vi.restoreAllMocks()
+    Fexios.DEFAULT_CONFIGS.fetch = globalThis.fetch
   })
 
   describe('Query parameters in HTTP requests', () => {

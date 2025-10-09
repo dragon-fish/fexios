@@ -6,35 +6,39 @@ import fexios, {
   FexiosResponseError,
   isFexiosError,
 } from '../src/index'
-import { EchoResponse } from './MockData'
-import { ECHO_BASE_URL } from './constants'
+import { mockFetch, EchoResponse, MOCK_FETCH_BASE_URL } from './mockFetch.js'
 
 const time = '' + Date.now()
 
+Fexios.DEFAULT_CONFIGS.fetch = mockFetch
+fexios.baseConfigs.fetch = mockFetch
+
 describe('Fexios Core', () => {
   it('Request with full url', async () => {
-    const { data } = await fexios.get<EchoResponse>(`${ECHO_BASE_URL}/get`)
+    const { data } = await fexios.get<EchoResponse>(
+      `${MOCK_FETCH_BASE_URL}/get`
+    )
     expect(data).to.be.an('object')
   })
 
   it('Request to absolute path with baseURL', async () => {
     const fexios = new Fexios({
-      baseURL: ECHO_BASE_URL,
+      baseURL: MOCK_FETCH_BASE_URL,
     })
     const { data } = await fexios.get<EchoResponse>('/path/to/anywhere')
-    expect(data.url).to.equal(`${ECHO_BASE_URL}/path/to/anywhere`)
+    expect(data.url).to.equal(`${MOCK_FETCH_BASE_URL}/path/to/anywhere`)
   })
 
   it('Pass first argument as options', async () => {
     const { data } = await fexios.request<EchoResponse>({
-      url: `${ECHO_BASE_URL}/get`,
+      url: `${MOCK_FETCH_BASE_URL}/get`,
     })
     expect(data).to.be.an('object')
   })
 
   it('Merge query params', async () => {
     const fexios = new Fexios({
-      baseURL: ECHO_BASE_URL,
+      baseURL: MOCK_FETCH_BASE_URL,
     })
     const fexiosWithQueryInit = fexios.extends({
       query: {
@@ -74,7 +78,7 @@ describe('Fexios Core', () => {
   it('Query/Headers Priority: requestOptions > requestURL > defaultOptions > baseURL', async () => {
     // Create fexios with baseURL containing query params and default options
     const testFexios = new Fexios({
-      baseURL: `${ECHO_BASE_URL}/?source=baseURL&priority=1&keep=base`,
+      baseURL: `${MOCK_FETCH_BASE_URL}/?source=baseURL&priority=1&keep=base`,
       query: {
         source: 'defaultOptions',
         priority: 2,
@@ -105,7 +109,9 @@ describe('Fexios Core', () => {
   })
 
   it('Handle undefined/null query parameters correctly', async () => {
-    const testFexios = new Fexios({ baseURL: ECHO_BASE_URL })
+    const testFexios = new Fexios({ 
+      baseURL: MOCK_FETCH_BASE_URL,
+    })
 
     const { data } = await testFexios.get<EchoResponse>('/test', {
       query: {
@@ -132,7 +138,9 @@ describe('Fexios Core', () => {
   it('GET should not have body', async () => {
     let error: FexiosError | undefined
     try {
-      await fexios.get<EchoResponse>(`${ECHO_BASE_URL}/get`, { body: 'test' })
+      await fexios.get<EchoResponse>(`${MOCK_FETCH_BASE_URL}/get`, {
+        body: 'test',
+      })
     } catch (e) {
       error = e
     }
@@ -143,7 +151,9 @@ describe('Fexios Core', () => {
   it('Bad status should throw ResponseError', async () => {
     let error: FexiosResponseError<string> | undefined
     try {
-      await fexios.get<EchoResponse>(`${ECHO_BASE_URL}/_status/404`)
+      await fexios.get<EchoResponse>(`${MOCK_FETCH_BASE_URL}/_status/404`, {
+        fetch: () => Promise.resolve(new Response('404', { status: 404 })),
+      })
     } catch (e) {
       error = e
     }
@@ -153,9 +163,12 @@ describe('Fexios Core', () => {
   })
 
   it('POST with JSON', async () => {
-    const { data } = await fexios.post<EchoResponse>(`${ECHO_BASE_URL}/post`, {
-      time,
-    })
+    const { data } = await fexios.post<EchoResponse>(
+      `${MOCK_FETCH_BASE_URL}/post`,
+      {
+        time,
+      }
+    )
     expect(data.body.time).to.equal(time)
   })
 
@@ -164,7 +177,7 @@ describe('Fexios Core', () => {
     const time = '' + Date.now()
     form.append('time', time)
     const { data } = await fexios.post<EchoResponse>(
-      `${ECHO_BASE_URL}/post`,
+      `${MOCK_FETCH_BASE_URL}/post`,
       form
     )
     expect(data.formData?.time).to.equal(time)
@@ -175,14 +188,14 @@ describe('Fexios Core', () => {
     const time = '' + Date.now()
     form.append('time', time)
     const { data } = await fexios.post<EchoResponse>(
-      `${ECHO_BASE_URL}/post`,
+      `${MOCK_FETCH_BASE_URL}/post`,
       form
     )
     expect(data.formData?.time).to.equal(time)
   })
 
   it('Callable instance', async () => {
-    const { data: data1 } = (await fexios(`${ECHO_BASE_URL}/`, {
+    const { data: data1 } = (await fexios(`${MOCK_FETCH_BASE_URL}/`, {
       method: 'POST',
     })) as FexiosFinalContext<EchoResponse>
     expect(data1).to.be.an('object')

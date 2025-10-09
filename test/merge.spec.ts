@@ -1,13 +1,16 @@
-import { describe, expect, it } from 'vitest'
-import { Fexios } from '../src/index'
+import { beforeEach, describe, expect, it } from 'vitest'
+import fexios, { Fexios } from '../src/index'
+import { mockFetch } from './mockFetch.js'
 
-/**
- * Tests for Fexios merge utilities - mergeQuery and mergeHeaders
- * These are pure unit tests for the merge functions without HTTP requests
- */
+Fexios.DEFAULT_CONFIGS.fetch = mockFetch
+fexios.baseConfigs.fetch = mockFetch
 
 describe('Merge Utilities', () => {
-  const fexios = new Fexios()
+  let fexios: Fexios
+
+  beforeEach(() => {
+    fexios = new Fexios()
+  })
 
   describe('mergeQuery', () => {
     it('should merge basic query parameters', () => {
@@ -138,7 +141,10 @@ describe('Merge Utilities', () => {
     })
 
     it('should handle array values with [] suffix by creating multiple query parameters', () => {
-      const result = fexios.mergeQuery({ a: '1' }, { 'b[]': [1, 2, 3], c: 'test' })
+      const result = fexios.mergeQuery(
+        { a: '1' },
+        { 'b[]': [1, 2, 3], c: 'test' }
+      )
       expect(result).toEqual({ a: '1', 'b[]': ['1', '2', '3'], c: 'test' })
     })
   })

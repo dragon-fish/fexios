@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import fexios from '../src/index'
+import fexios, { Fexios } from '../src/index'
 import { File } from '@web-std/file'
-import { EchoResponse } from './MockData'
-import { ECHO_BASE_URL } from './constants'
+import { mockFetch, EchoResponse, MOCK_FETCH_BASE_URL } from './mockFetch.js'
+
+Fexios.DEFAULT_CONFIGS.fetch = mockFetch
+fexios.baseConfigs.fetch = mockFetch
 
 // create a fake png file with 1x1 pixel
 const imageName = 'test.png'
@@ -27,7 +29,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
 describe('Fexios Download Binary Files', () => {
   it('GET binary file', async () => {
     const { data } = await fexios.get<Blob>(
-      `${ECHO_BASE_URL}/assets/_blank.png`,
+      `${MOCK_FETCH_BASE_URL}/_blank.png`,
       {
         responseType: 'blob',
       }
@@ -41,7 +43,7 @@ describe('Fexios Download Binary Files', () => {
 describe('Fexios File Uploads', () => {
   it('Upload file directly', async () => {
     const { data } = await fexios.post<EchoResponse>(
-      `${ECHO_BASE_URL}/post`,
+      `${MOCK_FETCH_BASE_URL}/post`,
       imageFile
     )
 
@@ -56,7 +58,7 @@ describe('Fexios File Uploads', () => {
     form.append(imageName, imageFile)
 
     const { data } = await fexios.post<EchoResponse>(
-      `${ECHO_BASE_URL}/post`,
+      `${MOCK_FETCH_BASE_URL}/post`,
       form
     )
 

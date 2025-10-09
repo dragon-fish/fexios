@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import fexios from '../src/index'
-import { ECHO_BASE_URL } from './constants'
 
-const WS_URL = `${ECHO_BASE_URL}/_ws`
+// TODO: use mockFetch
+const WS_URL = 'https://echo.epb.wiki/_ws'
 
 describe('WebSocket', () => {
   it('Should return WebSocket', async () => {

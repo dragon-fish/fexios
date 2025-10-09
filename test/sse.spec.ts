@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import fexios from '../src/index'
-import { ECHO_BASE_URL } from './constants'
 import { EventSource } from 'eventsource'
 ;(globalThis as any).EventSource = EventSource
 
-const SSE_URL = `${ECHO_BASE_URL}/_sse`
+// TODO: use mockFetch
+const SSE_URL = 'https://echo.epb.wiki/_sse'
 
 describe('SSE', () => {
   it('Server Sent Events', async () => {
