@@ -28,7 +28,7 @@ export class Fexios extends CallableInstance<
   ],
   Promise<FexiosFinalContext<any>>
 > {
-  protected hooks: FexiosHookStore[] = []
+  public baseConfigs: FexiosConfigs
   static readonly DEFAULT_CONFIGS: FexiosConfigs = {
     baseURL: '',
     timeout: 60 * 1000,
@@ -38,6 +38,7 @@ export class Fexios extends CallableInstance<
     responseType: undefined,
     fetch: globalThis.fetch,
   }
+  protected hooks: FexiosHookStore[] = []
   static readonly ALL_METHODS: FexiosMethods[] = [
     'get',
     'post',
@@ -55,10 +56,10 @@ export class Fexios extends CallableInstance<
     'trace',
   ]
 
-  constructor(public baseConfigs: Partial<FexiosConfigs> = {}) {
+  constructor(baseConfigs: Partial<FexiosConfigs> = {}) {
     super('request')
     // TODO: Should be deep merge
-    baseConfigs = { ...Fexios.DEFAULT_CONFIGS, ...baseConfigs }
+    this.baseConfigs = { ...Fexios.DEFAULT_CONFIGS, ...baseConfigs }
     Fexios.ALL_METHODS.forEach(this.createMethodShortcut.bind(this))
   }
 
