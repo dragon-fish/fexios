@@ -4,7 +4,6 @@
 
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fdragon-fish%2Ffexios.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fdragon-fish%2Ffexios?ref=badge_shield)
 
-
 类 Axios 语法的原生 fetch API 请求封装库<br>
 Fetch based HTTP client with similar API to axios for browser and Node.js
 
@@ -96,12 +95,16 @@ You can find some sample code snippets [here](test/).
 <summary>FexiosConfigs</summary>
 
 ```ts
-export type FexiosConfigs = {
+interface FexiosConfigs {
   baseURL: string
-  query: Record<string, string | number | boolean> | URLSearchParams
+  timeout: number
+  query: Record<string, any> | URLSearchParams
   headers: Record<string, string> | Headers
-  credentials: 'omit' | 'same-origin' | 'include'
-  responseType: 'json' | 'blob' | 'text'
+  credentials?: RequestInit['credentials']
+  cache?: RequestInit['cache']
+  mode?: RequestInit['mode']
+  responseType?: 'json' | 'blob' | 'text' | 'stream' | 'arrayBuffer'
+  fetch?: FetchLike
 }
 ```
 
@@ -120,6 +123,7 @@ const DEFAULT_CONFIGS = {
   },
   query: {},
   responseType: 'json',
+  fetch: globalThis.fetch,
 }
 ```
 
