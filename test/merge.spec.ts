@@ -75,18 +75,14 @@ describe('Merge Utilities', () => {
     })
 
     it('should handle undefined base', () => {
-      const result = fexios.mergeQuery(undefined, { a: '1', b: '2' })
+      const result = fexios.mergeQuery(undefined!, { a: '1', b: '2' })
       expect(result).toEqual({ a: '1', b: '2' })
     })
 
     it('should handle undefined income parameters', () => {
-      const result = fexios.mergeQuery(
-        { a: '1', b: '2' },
-        undefined,
-        // @ts-expect-error
-        null,
-        { c: '3' }
-      )
+      const result = fexios.mergeQuery({ a: '1', b: '2' }, undefined, null, {
+        c: '3',
+      })
       expect(result).toEqual({ a: '1', b: '2', c: '3' })
     })
 
@@ -215,7 +211,7 @@ describe('Merge Utilities', () => {
     })
 
     it('should handle undefined base', () => {
-      const result = fexios.mergeHeaders(undefined, {
+      const result = fexios.mergeHeaders(undefined!, {
         'Content-Type': 'application/json',
       })
       expect(result).toEqual({ 'content-type': 'application/json' })
@@ -225,7 +221,6 @@ describe('Merge Utilities', () => {
       const result = fexios.mergeHeaders(
         { 'Content-Type': 'application/json' },
         undefined,
-        // @ts-expect-error
         null,
         { Authorization: 'Bearer token' }
       )

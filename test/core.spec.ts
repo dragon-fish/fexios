@@ -109,7 +109,7 @@ describe('Fexios Core', () => {
   })
 
   it('Handle undefined/null query parameters correctly', async () => {
-    const testFexios = new Fexios({ 
+    const testFexios = new Fexios({
       baseURL: MOCK_FETCH_BASE_URL,
     })
 
@@ -142,10 +142,10 @@ describe('Fexios Core', () => {
         body: 'test',
       })
     } catch (e) {
-      error = e
+      error = e as FexiosError
     }
     expect(error).to.be.instanceOf(FexiosError)
-    expect(isFexiosError(error)).to.be.true
+    expect(FexiosError.is(error)).to.be.true
   })
 
   it('Bad status should throw ResponseError', async () => {
@@ -155,10 +155,11 @@ describe('Fexios Core', () => {
         fetch: () => Promise.resolve(new Response('404', { status: 404 })),
       })
     } catch (e) {
-      error = e
+      error = e as FexiosResponseError<string>
     }
     expect(error).to.be.instanceOf(FexiosResponseError)
-    expect(isFexiosError(error)).to.be.false
+    expect(FexiosError.is(error)).to.be.false
+    expect(FexiosResponseError.is(error)).to.be.true
     expect(error?.response.data).to.equal('404')
   })
 

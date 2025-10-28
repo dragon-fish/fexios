@@ -12,10 +12,11 @@ import type {
   FexiosInterceptors,
   FexiosRequestShortcut,
 } from './types'
-import { FexiosError, FexiosErrorCodes } from './errors'
-import { FexiosResponse, resolveResponseBody } from './response'
-import { FexiosQueryBuilder } from './query-builder'
-import { checkIsPlainObject, dropUndefinedAndNull } from './utils'
+import { FexiosError, FexiosErrorCodes } from './models/errors.js'
+import { FexiosResponse, resolveResponseBody } from './models/response.js'
+import { FexiosQueryBuilder } from './models/query-builder.js'
+import { checkIsPlainObject, dropUndefinedAndNull } from './utils.js'
+import { FexiosHeaderBuilder } from './models/header-builder'
 
 /**
  * Fexios
@@ -101,7 +102,7 @@ export class Fexios extends CallableInstance<
 
     // Extract query parameters from different sources
     // Priority: requestOptions > requestURL > defaultOptions > baseURL
-    const baseUrlQuery = baseURL?.searchParams
+    const baseUrlQuery = baseURL?.searchParams || new URLSearchParams()
     // Create a copy of requestUrlQuery before clearing the URL search params
     const requestUrlQuery = new URLSearchParams(reqURL.searchParams)
 
@@ -110,7 +111,7 @@ export class Fexios extends CallableInstance<
     ctx.url = reqURL.href
 
     // prettier-ignore
-    ctx.query = this.mergeQuery(
+    ctx.query = this.mergeQueries(
       baseUrlQuery,           // baseURL query (lowest priority)
       this.baseConfigs.query, // defaultOptions (baseOptions)
       requestUrlQuery,        // requestURL query (urlParams)
@@ -176,7 +177,7 @@ export class Fexios extends CallableInstance<
       credentials: ctx.credentials,
       cache: ctx.cache,
       mode: ctx.mode,
-      headers: ctx.headers,
+      headers: FexiosHeaderBuilder.makeHeaders(ctx.headers),
       body: ctx.body as any,
       signal: abortController?.signal,
     })
@@ -296,78 +297,8 @@ export class Fexios extends CallableInstance<
     }
   }
 
-  mergeQuery(
-    base: Record<string, any> | string | URLSearchParams | undefined,
-    ...income: (Record<string, any> | string | URLSearchParams | undefined)[]
-  ): Record<string, any> {
-    const result: Record<string, any> = {}
-
-    const processQuerySource = (source: typeof base) => {
-      if (!source) return
-
-      if (checkIsPlainObject(source)) {
-        Object.entries(source).forEach(([key, value]) => {
-          if (value === undefined || value === null) {
-            delete result[key]
-          } else if (Array.isArray(value)) {
-            // Handle array values
-            if (key.endsWith('[]')) {
-              // For keys ending with '[]', keep multiple entries with the same key
-              // Store as array to be processed later when building URLSearchParams
-              result[key] = value.map(String)
-            } else {
-              // For regular keys, create multiple query parameters with the same name
-              result[key] = value.map(String)
-            }
-          } else {
-            result[key] = String(value)
-          }
-        })
-      } else {
-        const query = new URLSearchParams(source)
-        query.forEach((value, key) => {
-          result[key] = value
-        })
-      }
-    }
-
-    processQuerySource(base)
-    income.forEach(processQuerySource)
-
-    return result
-  }
-
-  mergeHeaders(
-    base: Record<string, any> | Headers | undefined,
-    ...income: (Record<string, any> | Headers | undefined)[]
-  ): Record<string, string> {
-    const obj: Record<string, string> = {}
-    const baseHeaders = new Headers(base)
-    for (const item of income) {
-      if (item === undefined || item === null) continue
-
-      const isPlainInput = checkIsPlainObject(item)
-      if (isPlainInput) {
-        const processedItem = dropUndefinedAndNull(item)
-        // Skip if after processing, the object is empty
-        if (Object.keys(processedItem).length === 0) continue
-
-        const header = new Headers(processedItem as Record<string, string>)
-        header.forEach((value, key) => {
-          baseHeaders.set(key, value)
-        })
-      } else {
-        const header = new Headers(item)
-        header.forEach((value, key) => {
-          baseHeaders.set(key, value)
-        })
-      }
-    }
-    baseHeaders.forEach((value, key) => {
-      obj[key] = value
-    })
-    return obj
-  }
+  mergeQueries = FexiosQueryBuilder.mergeQueries
+  mergeHeaders = FexiosHeaderBuilder.mergeHeaders
 
   async emit<C = FexiosContext>(event: FexiosLifecycleEvents, ctx: C) {
     const hooks = this.hooks.filter((hook) => hook.event === event)
@@ -519,6 +450,7 @@ export class Fexios extends CallableInstance<
     return apply(this)
   }
 
+  // 版本弃子们.jpg
   /**
    * Remove all undefined and null properties from an object
    * Also handles empty strings based on options
@@ -531,6 +463,9 @@ export class Fexios extends CallableInstance<
    * @deprecated Use checkIsPlainObject from utils instead
    */
   readonly checkIsPlainObject = checkIsPlainObject
+
+  /** @deprecated Use `mergeQueries` instead */
+  mergeQuery = this.mergeQueries
 }
 
 // declare method shortcuts

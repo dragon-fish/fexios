@@ -1,6 +1,9 @@
-import type { FexiosConfigs, IFexiosResponse as IFexiosResponse } from './types'
-import { FexiosError, FexiosErrorCodes, FexiosResponseError } from './errors'
-import { checkIfTextData } from './utils'
+import type {
+  FexiosConfigs,
+  IFexiosResponse as IFexiosResponse,
+} from '../types'
+import { FexiosError, FexiosErrorCodes, FexiosResponseError } from './errors.js'
+import { checkIfTextData } from '../utils'
 
 /**
  * Fexios response wrapper class

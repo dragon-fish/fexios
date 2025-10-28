@@ -7,25 +7,25 @@
  */
 
 // Export all types
-export * from './types'
+export * from './types.js'
 
 // Export errors
-export * from './errors'
+export * from './models/errors.js'
 
 // Export response utilities
-export * from './response'
+export * from './models/response.js'
 
 // Export query builder
-export * from './query-builder'
+export * from './models/query-builder.js'
 
 // Export utilities
-export * from './utils'
+export * from './utils.js'
 
 // Export main Fexios class
-export * from './fexios'
+export * from './fexios.js'
 
 // Support for direct import
-import { Fexios } from './fexios'
+import { Fexios } from './fexios.js'
 export const createFexios = Fexios.create
 export const fexios = createFexios()
 export default fexios

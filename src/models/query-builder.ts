@@ -251,4 +251,97 @@ export namespace FexiosQueryBuilder {
 
     return out as T
   }
+
+  /**
+   * Merge multiple query representations into a single plain object.
+   *
+   * @note income `undefined` meaning no change, `null` meaning remove the key.
+   *
+   * @example
+   * ```
+   * mergeQueries({ a: '1' }, { b: '2' }, { c: '3' }) // { a: '1', b: '2', c: '3' }
+   * mergeQueries({ a: '1', b: '2' }, { b: '3', c: '4' }) // { a: '1', b: '3', c: '4' }
+   * mergeQueries({ a: '1', b: '2' }, null, { c: '3' }) // { a: '1', b: '2', c: '3' }
+   * mergeQueries({ a: '1', b: '2' }, { b: null }, { c: '3' }) // { a: '1', c: '3' }
+   * mergeQueries(new URLSearchParams('a=1&b=2'), { b: '3', c: '4' }) // { a: '1', b: '3', c: '4' }
+   * mergeQueries({ a: '1' }, new URLSearchParams('b=2&c=3')) // { a: '1', b: '2', c: '3' }
+   */
+  export const mergeQueries = <T = any>(
+    original: Record<string, any> | URLSearchParams | string,
+    ...incomes: Array<
+      Record<string, any> | URLSearchParams | string | null | undefined
+    >
+  ): T => {
+    const isPlainObject = (v: any): v is Record<string, any> =>
+      v !== null && typeof v === 'object' && v.constructor === Object
+
+    const clone = (v: any): any => {
+      if (Array.isArray(v)) return v.map(clone)
+      if (isPlainObject(v)) {
+        const o: any = {}
+        for (const [k, val] of Object.entries(v)) o[k] = clone(val)
+        return o
+      }
+      return v
+    }
+
+    // Accepts:
+    // - '?a=1&b=2'
+    // - 'a=1&b=2'
+    // - 'https://x.com/path?a=1#hash'
+    const spFromString = (s: string): URLSearchParams => {
+      const t = s.trim()
+      if (!t) return new URLSearchParams()
+      if (t.startsWith('?')) return new URLSearchParams(t.slice(1))
+      if (t.includes('?'))
+        return new URLSearchParams(t.slice(t.indexOf('?') + 1))
+      return new URLSearchParams(t)
+    }
+
+    const toPlain = (src: any): Record<string, any> => {
+      if (!src) return {}
+      if (src instanceof URLSearchParams) return toQueryRecord(src)
+      if (typeof src === 'string') return toQueryRecord(spFromString(src))
+      if (isPlainObject(src)) return src
+      throw new TypeError(
+        'only plain object, URLSearchParams, or query string is supported'
+      )
+    }
+
+    const result: Record<string, any> = clone(toPlain(original))
+
+    const apply = (target: Record<string, any>, patch: Record<string, any>) => {
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === undefined) continue
+        if (v === null) {
+          delete target[k]
+          continue
+        }
+        const cur = target[k]
+        if (isPlainObject(cur) && isPlainObject(v)) {
+          apply(cur, v)
+        } else {
+          target[k] = clone(v)
+        }
+      }
+    }
+
+    for (const income of incomes) {
+      if (income == null) continue
+      if (income instanceof URLSearchParams) {
+        apply(result, toQueryRecord(income))
+      } else if (typeof income === 'string') {
+        apply(result, toPlain(income))
+      } else {
+        if (typeof income !== 'object' || income.constructor !== Object) {
+          throw new TypeError(
+            'only plain object, URLSearchParams, or query string is supported'
+          )
+        }
+        apply(result, income)
+      }
+    }
+
+    return result as T
+  }
 }

@@ -15,7 +15,7 @@ export interface FexiosConfigs {
   baseURL: string
   timeout: number
   query: Record<string, any> | URLSearchParams
-  headers: Record<string, string> | Headers
+  headers: Record<string, string | string[]> | Headers
   credentials?: RequestInit['credentials']
   cache?: RequestInit['cache']
   mode?: RequestInit['mode']

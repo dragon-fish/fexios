@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FexiosQueryBuilder } from './index.js'
+import { FexiosQueryBuilder } from '../index.js'
 
 /**
  * Tests for FexiosQueryBuilder utility functions
@@ -170,6 +170,130 @@ describe('QueryBuilder', () => {
       const sp = new URLSearchParams('')
       const obj = FexiosQueryBuilder.toQueryRecord(sp)
       expect(obj).toEqual({})
+    })
+  })
+
+  describe('mergeQueries', () => {
+    it('merges flat objects', () => {
+      const res = FexiosQueryBuilder.mergeQueries(
+        {},
+        { a: '1' },
+        { b: '2' },
+        { c: '3' }
+      )
+      expect(res).toEqual({ a: '1', b: '2', c: '3' })
+    })
+
+    it('later incomes overwrite earlier keys', () => {
+      const res = FexiosQueryBuilder.mergeQueries(
+        { a: '1', b: '2' },
+        { b: '3', c: '4' }
+      )
+      expect(res).toEqual({ a: '1', b: '3', c: '4' })
+    })
+
+    it('ignores undefined and removes key on null', () => {
+      const res = FexiosQueryBuilder.mergeQueries(
+        { a: '1', b: '2', keep: 'y' },
+        { a: undefined, b: null, keep: undefined, add: undefined as any }
+      )
+      expect(res).toEqual({ a: '1', keep: 'y' })
+    })
+
+    it('deep merges plain objects and supports deep null deletions', () => {
+      const res = FexiosQueryBuilder.mergeQueries(
+        { a: { x: 1, y: 2 }, b: { c: 1 } },
+        { a: { y: 99 }, b: { c: null }, d: { k: 'v' } }
+      )
+      expect(res).toEqual({ a: { x: 1, y: 99 }, b: {}, d: { k: 'v' } })
+    })
+
+    it('arrays overwrite rather than concat', () => {
+      const res = FexiosQueryBuilder.mergeQueries(
+        { arr: [1, 2], nest: { tags: ['a'] } },
+        { arr: [3], nest: { tags: ['b', 'c'] } }
+      )
+      expect(res).toEqual({ arr: [3], nest: { tags: ['b', 'c'] } })
+    })
+
+    it('handles URLSearchParams as original', () => {
+      const orig = new URLSearchParams('a=1&b=2')
+      const res = FexiosQueryBuilder.mergeQueries(orig, { b: '3', c: '4' })
+      expect(res).toEqual({ a: '1', b: '3', c: '4' })
+    })
+
+    it('handles URLSearchParams in incomes', () => {
+      const res = FexiosQueryBuilder.mergeQueries(
+        { a: '1' },
+        new URLSearchParams('b=2&c=3')
+      )
+      expect(res).toEqual({ a: '1', b: '2', c: '3' })
+    })
+
+    it('supports bracket array keys [] semantics from URLSearchParams', () => {
+      const res = FexiosQueryBuilder.mergeQueries(
+        {},
+        new URLSearchParams('arr[]=only-one-value')
+      )
+      // toQueryRecord 的语义：带 [] 的 key 固定为数组
+      expect(res).toEqual({ 'arr[]': ['only-one-value'] })
+    })
+
+    it('reconstructs nested objects from bracket notation in URLSearchParams', () => {
+      const res = FexiosQueryBuilder.mergeQueries(
+        {},
+        new URLSearchParams('obj[foo]=bar&obj[baz]=qux&deep[dark][fantasy]=yes')
+      )
+      expect(res).toEqual({
+        obj: { foo: 'bar', baz: 'qux' },
+        deep: { dark: { fantasy: 'yes' } },
+      })
+    })
+
+    it('does not mutate original object', () => {
+      const original = { a: { x: 1 }, arr: [1, 2] as any }
+      const snapshot = JSON.parse(JSON.stringify(original))
+      const res = FexiosQueryBuilder.mergeQueries(
+        original,
+        { a: { y: 2 } },
+        { arr: [3] }
+      )
+      expect(res).toEqual({ a: { x: 1, y: 2 }, arr: [3] })
+      expect(original).toEqual(snapshot) // 原对象未被修改
+    })
+
+    it('overwrites non-plain values (Date, RegExp, custom instances)', () => {
+      class Box {
+        constructor(public v: number) {}
+      }
+      const res = FexiosQueryBuilder.mergeQueries(
+        { d: new Date('2020-01-01T00:00:00Z'), r: /a/, box: new Box(1) },
+        { d: new Date('2021-01-01T00:00:00Z'), r: /b/, box: new Box(2) }
+      )
+      expect(res.d).toEqual(new Date('2021-01-01T00:00:00Z'))
+      expect(String(res.r)).toBe(String(/b/))
+      expect(res.box).toBeInstanceOf(Box)
+      expect((res.box as any).v).toBe(2)
+    })
+
+    it('ignores null/undefined incomes safely', () => {
+      const res = FexiosQueryBuilder.mergeQueries(
+        { a: '1' },
+        null as any,
+        undefined as any,
+        {
+          b: 2,
+        }
+      )
+      expect(res).toEqual({ a: '1', b: 2 })
+    })
+
+    it('supports removing nested keys without dropping siblings', () => {
+      const res = FexiosQueryBuilder.mergeQueries(
+        { a: { b: 1, c: 2 } },
+        { a: { b: null } }
+      )
+      expect(res).toEqual({ a: { c: 2 } })
     })
   })
 })
