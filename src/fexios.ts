@@ -15,7 +15,7 @@ import type {
 import { FexiosError, FexiosErrorCodes } from './models/errors.js'
 import { FexiosResponse, resolveResponseBody } from './models/response.js'
 import { FexiosQueryBuilder } from './models/query-builder.js'
-import { checkIsPlainObject, dropUndefinedAndNull } from './utils.js'
+import { checkIsPlainObject, deepMerge } from './utils.js'
 import { FexiosHeaderBuilder } from './models/header-builder'
 
 /**
@@ -60,7 +60,7 @@ export class Fexios extends CallableInstance<
   constructor(baseConfigs: Partial<FexiosConfigs> = {}) {
     super('request')
     // TODO: Should be deep merge
-    this.baseConfigs = { ...Fexios.DEFAULT_CONFIGS, ...baseConfigs }
+    this.baseConfigs = deepMerge(Fexios.DEFAULT_CONFIGS, baseConfigs)
     Fexios.ALL_METHODS.forEach(this.createMethodShortcut.bind(this))
   }
 
@@ -451,21 +451,11 @@ export class Fexios extends CallableInstance<
   }
 
   // 版本弃子们.jpg
-  /**
-   * Remove all undefined and null properties from an object
-   * Also handles empty strings based on options
-   * @deprecated Use dropUndefinedAndNull from utils instead
-   */
-  readonly dropUndefinedAndNull = dropUndefinedAndNull
-
-  /**
-   * Check if given payload is a plain object
-   * @deprecated Use checkIsPlainObject from utils instead
-   */
+  /** @deprecated Use checkIsPlainObject from utils instead */
   readonly checkIsPlainObject = checkIsPlainObject
 
   /** @deprecated Use `mergeQueries` instead */
-  mergeQuery = this.mergeQueries
+  readonly mergeQuery = this.mergeQueries
 }
 
 // declare method shortcuts

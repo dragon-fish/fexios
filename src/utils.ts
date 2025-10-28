@@ -247,25 +247,35 @@ export function checkIsPlainObject(
   return proto === Object.prototype || proto === null
 }
 
-/**
- * Remove all undefined and null properties from an object
- * Also handles empty strings based on options
- */
-export function dropUndefinedAndNull<T extends Record<string, any>>(
+export const deepMerge = <T extends object>(
   obj: T,
-  options: { dropEmptyString?: boolean } = {}
-): Partial<T> {
-  const newObj: Record<string, any> = {}
-  Object.entries(obj).forEach(([key, value]) => {
-    // Always drop undefined and null
-    if (value === undefined || value === null) {
-      return
+  ...incomes: (Partial<T> | null | undefined)[]
+): T => {
+  const clone = (v: any): any => {
+    if (Array.isArray(v)) return v.slice()
+    if (checkIsPlainObject(v)) {
+      const out: Record<PropertyKey, any> = {}
+      for (const k of Reflect.ownKeys(v)) out[k] = clone((v as any)[k])
+      return out
     }
-    // Optionally drop empty strings
-    if (options.dropEmptyString && value === '') {
-      return
+    return v
+  }
+
+  const result: Record<PropertyKey, any> = clone(obj)
+
+  for (const inc of incomes) {
+    if (inc === null || inc === void 0) continue
+    for (const key of Reflect.ownKeys(inc)) {
+      const nextVal = (inc as any)[key]
+      if (typeof nextVal === 'undefined') continue
+      const prevVal = result[key]
+      if (checkIsPlainObject(prevVal) && checkIsPlainObject(nextVal)) {
+        result[key] = deepMerge(prevVal, nextVal)
+      } else {
+        result[key] = clone(nextVal)
+      }
     }
-    newObj[key] = value
-  })
-  return newObj as Partial<T>
+  }
+
+  return result as T
 }

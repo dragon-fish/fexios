@@ -170,6 +170,7 @@ describe('Fexios Core', () => {
         time,
       }
     )
+    console.info('POST with JSON', data)
     expect(data.body.time).to.equal(time)
   })
 

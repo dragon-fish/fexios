@@ -14,6 +14,11 @@ export type FetchLike = (
 export interface FexiosConfigs {
   baseURL: string
   timeout: number
+  /**
+   * In context, query value can be:
+   * - `null`      - to remove the item
+   * - `undefined` - to keep the item as is
+   */
   query: Record<string, any> | URLSearchParams
   headers: Record<string, string | string[]> | Headers
   credentials?: RequestInit['credentials']
@@ -23,9 +28,15 @@ export interface FexiosConfigs {
   fetch?: FetchLike
 }
 
-export interface FexiosRequestOptions extends FexiosConfigs {
+export interface FexiosRequestOptions extends Omit<FexiosConfigs, 'headers'> {
   url?: string | URL
   method?: FexiosMethods
+  /**
+   * In context, header value can be:
+   * - `null`      - to remove the header
+   * - `undefined` - to keep the header as is
+   */
+  headers: Record<string, string | string[] | null | undefined> | Headers
   body?: Record<string, any> | string | FormData | URLSearchParams
   abortController?: AbortController
   onProgress?: (progress: number, buffer?: Uint8Array) => void

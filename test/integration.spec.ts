@@ -1,4 +1,12 @@
-import { describe, expect, it, vi, beforeAll, afterAll, beforeEach } from 'vitest'
+import {
+  describe,
+  expect,
+  it,
+  vi,
+  beforeAll,
+  afterAll,
+  beforeEach,
+} from 'vitest'
 import { Fexios } from '../src/index'
 
 /**
@@ -32,20 +40,21 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
   describe('Query parameters in HTTP requests', () => {
     it('should work with axios-like API where undefined values are ignored', async () => {
       // This simulates the usage pattern mentioned in the request
-      const testFexios = new Fexios({ baseURL: 'https://api.example.com' })
+      const testFexios = new Fexios({
+        baseURL: 'https://api.example.com',
+        headers: { 'X-Removed': 'true' },
+      })
 
-      await testFexios.get('/foo?bar=1', {
+      await testFexios.get('/foo?bar=1&qux=2', {
         query: {
           bar: undefined, // This should be ignored
           baz: 'test', // This should be kept
-          qux: null, // This should be ignored
+          qux: null, // This should be removed
         },
         headers: {
           Authorization: 'Bearer token',
-          // @ts-expect-error
           'X-Custom': undefined, // This should be ignored
-          // @ts-expect-error
-          'Content-Type': null, // This should be ignored
+          'X-Removed': null, // This should be removed
         },
       })
 
@@ -57,7 +66,8 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
 
       // URL should not contain bar since it was undefined
       const calledUrl = mockFetch.mock.calls[0][0].url
-      expect(calledUrl).not.toContain('bar=')
+      expect(calledUrl).toContain('bar=1')
+      expect(calledUrl).not.toContain('qux=')
       expect(calledUrl).toContain('baz=test')
 
       // Headers should not contain undefined values
@@ -107,11 +117,11 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
 
       const calledUrl = mockFetch.mock.calls[0][0].url
       const url = new URL(calledUrl)
-      
+
       // Should have multiple foo parameters
       expect(url.searchParams.getAll('foo')).toEqual(['bar', 'baz'])
       expect(url.searchParams.get('single')).toBe('value')
-      
+
       // Check the actual URL string format
       expect(calledUrl).toContain('foo=bar')
       expect(calledUrl).toContain('foo=baz')
@@ -130,11 +140,11 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
 
       const calledUrl = mockFetch.mock.calls[0][0].url
       const url = new URL(calledUrl)
-      
+
       // Should have multiple arr[] parameters
       expect(url.searchParams.getAll('arr[]')).toEqual(['bar', 'baz'])
       expect(url.searchParams.get('single')).toBe('value')
-      
+
       // Check the actual URL string format (URL-encoded)
       expect(calledUrl).toContain('arr%5B%5D=bar')
       expect(calledUrl).toContain('arr%5B%5D=baz')
@@ -147,34 +157,41 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
       const testFexios = new Fexios({
         baseURL: 'https://api.example.com',
         headers: {
-          'Authorization': 'Bearer default-token',
+          Authorization: 'Bearer default-token',
           'X-Client': 'default-client',
           'Content-Type': 'application/json',
         },
       })
 
-      await testFexios.post('/api', { data: 'test' }, {
-        headers: {
-          'Authorization': 'Bearer request-token', // Should override
-          'X-Custom': 'request-header', // Should add
-          // Content-Type should be kept from default
-        },
-      })
+      await testFexios.post(
+        '/api',
+        { data: 'test' },
+        {
+          headers: {
+            Authorization: 'Bearer request-token', // Should override
+            'X-Custom': 'request-header', // Should add
+            // Content-Type should be kept from default
+          },
+        }
+      )
 
-      const calledHeaders = mockFetch.mock.calls[0][1]?.headers || mockFetch.mock.calls[0][0].headers
-      const headersObject = calledHeaders instanceof Headers
-        ? Object.fromEntries(calledHeaders.entries())
-        : calledHeaders
+      const calledHeaders =
+        mockFetch.mock.calls[0][1]?.headers ||
+        mockFetch.mock.calls[0][0].headers
+      const headersObject =
+        calledHeaders instanceof Headers
+          ? Object.fromEntries(calledHeaders.entries())
+          : calledHeaders
 
       // Verify priority: requestOptions overrides defaultOptions
       expect(headersObject.authorization).toBe('Bearer request-token')
-      
+
       // Verify default headers are preserved when not overridden
       expect(headersObject['x-client']).toBe('default-client')
-      
+
       // Verify new headers from request are added
       expect(headersObject['x-custom']).toBe('request-header')
-      
+
       // Content-Type should be from JSON body processing, not from defaults
       expect(headersObject['content-type']).toContain('application/json')
     })
@@ -195,10 +212,13 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
         },
       })
 
-      const calledHeaders = mockFetch.mock.calls[0][1]?.headers || mockFetch.mock.calls[0][0].headers
-      const headersObject = calledHeaders instanceof Headers
-        ? Object.fromEntries(calledHeaders.entries())
-        : calledHeaders
+      const calledHeaders =
+        mockFetch.mock.calls[0][1]?.headers ||
+        mockFetch.mock.calls[0][0].headers
+      const headersObject =
+        calledHeaders instanceof Headers
+          ? Object.fromEntries(calledHeaders.entries())
+          : calledHeaders
 
       // Headers should be case-insensitive, request options should win
       expect(headersObject['content-type']).toBe('text/plain')
@@ -212,6 +232,7 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
         baseURL: 'https://api.example.com',
         query: {
           keep: 'default',
+          nochange: 'default',
           override: 'default',
           remove: 'default',
         },
@@ -220,7 +241,8 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
       await testFexios.get('/path?override=url', {
         query: {
           override: 'request',
-          remove: undefined, // Should remove the 'default' value
+          nochange: undefined, // Should keep the 'default' value
+          remove: null, // Should remove the 'default' value
           add: 'new',
         },
       })
@@ -230,6 +252,7 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
       const params = Object.fromEntries(url.searchParams.entries())
 
       expect(params.keep).toBe('default') // Not overridden
+      expect(params.nochange).toBe('default') // Not changed
       expect(params.override).toBe('request') // Overridden by request
       expect(params.remove).toBeUndefined() // Removed by undefined
       expect(params.add).toBe('new') // Added by request
@@ -242,7 +265,7 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
           from: 'defaultOptions',
         },
       })
-      
+
       await fexios.get('/path?from=requestURL', {
         query: {
           from: 'requestOptions',
