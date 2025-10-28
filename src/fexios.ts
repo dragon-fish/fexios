@@ -95,10 +95,7 @@ export class Fexios extends CallableInstance<
     ctx.url = reqURL.href
     ctx.baseURL = baseURL ? baseURL.href : reqURL.origin
 
-    ctx.headers = this.mergeHeaders(
-      this.baseConfigs.headers,
-      options.headers
-    ) as any
+    ctx.headers = this.mergeHeaders(this.baseConfigs.headers, options.headers)
 
     // Extract query parameters from different sources
     // Priority: requestOptions > requestURL > defaultOptions > baseURL
@@ -147,21 +144,30 @@ export class Fexios extends CallableInstance<
         body = ctx.body
       } else if (typeof ctx.body === 'object' && ctx.body !== null) {
         body = JSON.stringify(ctx.body)
-        ;(ctx.headers as any)['content-type'] = 'application/json'
+        ctx.headers = this.mergeHeaders(ctx.headers, {
+          'Content-Type': 'application/json',
+        })
       } else {
         body = ctx.body
       }
     }
 
     // Adjust content-type header
-    if (!(options.headers as any)?.['content-type'] && body) {
+    const optionsHeaders = FexiosHeaderBuilder.makeHeaders(
+      options.headers || {}
+    )
+    if (!optionsHeaders.get('content-type') && body) {
       if (body instanceof FormData || body instanceof URLSearchParams) {
         // Let the browser automatically set content-type for FormData/URLSearchParams
-        delete (ctx.headers as any)['content-type']
+        ctx.headers = this.mergeHeaders(ctx.headers, { 'content-type': null })
       } else if (typeof body === 'string' && typeof ctx.body === 'object') {
-        ;(ctx.headers as any)['content-type'] = 'application/json'
+        ctx.headers = this.mergeHeaders(ctx.headers, {
+          'content-type': 'application/json',
+        })
       } else if (body instanceof Blob) {
-        ;(ctx.headers as any)['content-type'] = body.type
+        ctx.headers = this.mergeHeaders(ctx.headers, {
+          'content-type': body.type || 'application/octet-stream',
+        })
       }
     }
 
