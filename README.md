@@ -95,11 +95,16 @@ You can find some sample code snippets [here](test/).
 <summary>FexiosConfigs</summary>
 
 ```ts
-interface FexiosConfigs {
+export interface FexiosConfigs {
   baseURL: string
   timeout: number
+  /**
+   * In context, query value can be:
+   * - `null`      - to remove the item
+   * - `undefined` - to keep the item as is
+   */
   query: Record<string, any> | URLSearchParams
-  headers: Record<string, string> | Headers
+  headers: Record<string, string | string[]> | Headers
   credentials?: RequestInit['credentials']
   cache?: RequestInit['cache']
   mode?: RequestInit['mode']
@@ -138,14 +143,18 @@ const DEFAULT_CONFIGS = {
 <summary>FexiosRequestOptions</summary>
 
 ```ts
-export interface FexiosRequestOptions {
-  baseURL?: string
+export interface FexiosRequestOptions extends Omit<FexiosConfigs, 'headers'> {
+  url?: string | URL
   method?: FexiosMethods
-  credentials?: 'omit' | 'same-origin' | 'include'
-  headers?: Record<string, string> | Headers
-  query?: Record<string, string | number | boolean> | URLSearchParams
+  /**
+   * In context, header value can be:
+   * - `null`      - to remove the header
+   * - `undefined` - to keep the header as is
+   */
+  headers: Record<string, string | string[] | null | undefined> | Headers
   body?: Record<string, any> | string | FormData | URLSearchParams
-  responseType?: 'json' | 'blob' | 'text'
+  abortController?: AbortController
+  onProgress?: (progress: number, buffer?: Uint8Array) => void
 }
 ```
 
@@ -159,17 +168,16 @@ export type FexiosFinalContext<T = any> = Omit<
   'rawResponse' | 'response' | 'data' | 'headers'
 > & {
   rawResponse: Response
-  response: FexiosResponse<T>
+  response: IFexiosResponse<T>
   headers: Headers
   data: T
 }
-export type FexiosResponse<T = any> = {
-  rawResponse: Response
+export interface IFexiosResponse<T = any> {
   ok: boolean
   status: number
   statusText: string
   headers: Headers
-  isGood: boolean
+  rawResponse: Response
   data: T
 }
 ```
@@ -184,6 +192,19 @@ And common request methods aliases:
 - fexios.put(url[, data[, config]])
 - fexios.patch(url[, data[, config]])
 
+## 请求参数合并规则 Queries/Headers Merge Strategy
+
+- `ctx.query` could be: `Record<string, any> | URLSearchParams`
+- `ctx.headers` could be: `Record<string, string | string[] | null | undefined> | Headers`
+
+Basic merging rules:
+
+1. `undefined` value will keep the item as is
+2. `null` value will remove the item
+3. For other values: new value will override the old one
+
+See [header-builder.spec.ts](src/models/header-builder.spec.ts) and [query-builder.spec.ts](src/models/query-builder.spec.ts) for more examples.
+
 ## 钩子 Hooks
 
 You can modify context in hooks' callback then return it as a brand new context™.
@@ -191,12 +212,14 @@ You can modify context in hooks' callback then return it as a brand new context�
 Return `false` to abort request immediately.
 
 ```ts
-export type FexiosHook<C = unknown> = (context: C) => AwaitAble<C | false>
+export type FexiosHook<C = unknown> = (
+  context: C
+) => AwaitAble<C | void | false>
 export interface FexiosContext<T = any> extends FexiosRequestOptions {
   url: string // may changes after beforeInit
   rawRequest?: Request // provide in beforeRequest
   rawResponse?: Response // provide in afterRequest
-  response?: FexiosResponse // provide in afterRequest
+  response?: IFexiosResponse // provide in afterRequest
   data?: T // provide in afterRequest
 }
 ```
