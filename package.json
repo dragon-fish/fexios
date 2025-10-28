@@ -27,7 +27,7 @@
     "prepublish": "npm run build",
     "build": "npm run clean && vite build",
     "clean": "rimraf dist lib",
-    "test": "vitest run ./test",
+    "test": "vitest run ./test ./src",
     "review": "vite preview --outDir ./.test_reports"
   },
   "publishConfig": {
