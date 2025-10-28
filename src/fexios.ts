@@ -515,6 +515,10 @@ export class Fexios extends CallableInstance<
     return new Fexios(configs)
   }
 
+  plugin(apply: (app: Fexios) => Fexios) {
+    return apply(this)
+  }
+
   /**
    * Remove all undefined and null properties from an object
    * Also handles empty strings based on options

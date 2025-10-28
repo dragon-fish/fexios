@@ -1,3 +1,5 @@
+import { Fexios } from './fexios.js'
+
 /**
  * Type definitions for Fexios
  */
@@ -115,3 +117,5 @@ export interface IFexiosResponse<T = any> {
   rawResponse: Response
   data: T
 }
+
+export type FexiosPlugin = (app: Fexios) => Fexios

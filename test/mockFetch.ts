@@ -81,8 +81,8 @@ export const mockFetch: FetchLike = async (
     return new Response('', {
       status: 200,
       headers: {
-        'upgrade': 'websocket',
-        'connection': 'Upgrade',
+        upgrade: 'websocket',
+        connection: 'Upgrade',
         'access-control-allow-origin': '*',
       },
     })
@@ -97,7 +97,7 @@ export const mockFetch: FetchLike = async (
       headers: {
         'content-type': 'text/event-stream',
         'cache-control': 'no-cache',
-        'connection': 'keep-alive',
+        connection: 'keep-alive',
         'access-control-allow-origin': '*',
       },
     })
@@ -116,6 +116,20 @@ export const mockFetch: FetchLike = async (
       status: 200,
       headers: {
         'content-type': 'image/png',
+        'access-control-allow-origin': '*',
+      },
+    })
+  }
+
+  // mock set-cookie endpoint
+  if (url.pathname === '/set-cookie') {
+    const cookieName = url.searchParams.get('cookieName') || 'testCookie'
+    const cookieValue = url.searchParams.get('cookieValue') || 'testValue'
+    const setCookie = `${cookieName}=${cookieValue}; Path=/; HttpOnly`
+    return new Response('', {
+      status: 200,
+      headers: {
+        'set-cookie': setCookie,
         'access-control-allow-origin': '*',
       },
     })
@@ -240,7 +254,6 @@ export const mockFetch: FetchLike = async (
     },
   })
 }
-
 
 // Mock EventSource for SSE testing
 export class MockEventSource {
