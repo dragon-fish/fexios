@@ -1,0 +1,26 @@
+{
+  "include": ["src/**/*"],
+  "exclude": ["lib", "dist", "src/**/*.spec.*"],
+  "compilerOptions": {
+    "baseUrl": "./",
+    "outDir": "dist",
+    "target": "ES2020",
+    "module": "ESNext",
+    "strict": true,
+    "composite": true,
+    "noEmit": true,
+    "importHelpers": true,
+    "moduleResolution": "Bundler",
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "sourceMap": true,
+    "resolveJsonModule": true,
+    "types": ["node", "vite/client"],
+    "lib": ["ESNext", "DOM"],
+    "declaration": true,
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  }
+}

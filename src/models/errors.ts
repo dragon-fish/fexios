@@ -1,4 +1,4 @@
-import type { FexiosContext, IFexiosResponse } from './types'
+import type { FexiosContext, IFexiosResponse } from '../types.js'
 
 /**
  * Error codes for Fexios
