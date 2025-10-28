@@ -28,6 +28,9 @@ export class FexiosError extends Error {
   ) {
     super(message, options)
   }
+  static is(e: any): e is FexiosError {
+    return e?.constructor === FexiosError
+  }
 }
 
 /**
@@ -42,11 +45,14 @@ export class FexiosResponseError<T> extends FexiosError {
   ) {
     super(response.statusText, message, undefined, options)
   }
+  static is(e: any): e is FexiosResponseError<any> {
+    return e?.constructor === FexiosResponseError
+  }
 }
 
 /**
  * Check if the error is a FexiosError that not caused by Response error
  */
 export const isFexiosError = (e: any): boolean => {
-  return !(e instanceof FexiosResponseError) && e instanceof FexiosError
+  return FexiosError.is(e) && !FexiosResponseError.is(e)
 }
