@@ -295,5 +295,83 @@ describe('QueryBuilder', () => {
       )
       expect(res).toEqual({ a: { c: 2 } })
     })
+
+    describe('wierd cases (but should works)', () => {
+      it('handles FormData as original parameter', () => {
+        const formData = new FormData()
+        formData.append('name', 'John')
+        formData.append('age', '25')
+        formData.append('hobbies', 'reading')
+        formData.append('hobbies', 'coding')
+
+        const res = FexiosQueryBuilder.mergeQueries(formData, {
+          city: 'Beijing',
+        })
+        expect(res).toEqual({
+          name: 'John',
+          age: '25',
+          hobbies: ['reading', 'coding'],
+          city: 'Beijing',
+        })
+      })
+
+      it('handles FormData in incomes', () => {
+        const formData = new FormData()
+        formData.append('email', 'test@example.com')
+        formData.append('role', 'admin')
+
+        const res = FexiosQueryBuilder.mergeQueries({ id: '123' }, formData)
+        expect(res).toEqual({
+          id: '123',
+          email: 'test@example.com',
+          role: 'admin',
+        })
+      })
+
+      it('merges multiple FormData objects', () => {
+        const formData1 = new FormData()
+        formData1.append('a', '1')
+        formData1.append('b', '2')
+
+        const formData2 = new FormData()
+        formData2.append('b', '3')
+        formData2.append('c', '4')
+
+        const res = FexiosQueryBuilder.mergeQueries(formData1, formData2)
+        expect(res).toEqual({
+          a: '1',
+          b: '3', // 后面的覆盖前面的
+          c: '4',
+        })
+      })
+
+      it('mixes FormData with URLSearchParams and plain objects', () => {
+        const formData = new FormData()
+        formData.append('form', 'data')
+
+        const urlParams = new URLSearchParams('url=params')
+
+        const res = FexiosQueryBuilder.mergeQueries(formData, urlParams, {
+          extra: 'value',
+        })
+        expect(res).toEqual({
+          form: 'data',
+          url: 'params',
+          extra: 'value',
+        })
+      })
+
+      it('handles FormData with repeated keys as arrays', () => {
+        const formData = new FormData()
+        formData.append('tags', 'javascript')
+        formData.append('tags', 'typescript')
+        formData.append('tags', 'nodejs')
+
+        const res = FexiosQueryBuilder.mergeQueries({}, formData)
+        expect(res).toEqual({
+          tags: ['javascript', 'typescript', 'nodejs'],
+        })
+      })
+    })
   })
 })

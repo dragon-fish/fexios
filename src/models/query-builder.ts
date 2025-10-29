@@ -1,3 +1,5 @@
+import { checkIsPlainObject } from '@/utils.js'
+
 /**
  * Static utility class for building URL search parameters
  *
@@ -131,14 +133,19 @@ export namespace FexiosQueryBuilder {
   export const makeURL = (
     url: string | URL,
     params?: Record<string, any>,
-    hash?: string
+    hash?: string,
+    /** for SSR compatibility */
+    base?: string | URL
   ): URL => {
+    const fallbackBase =
+      (typeof window !== 'undefined' && window.location?.origin) ||
+      'http://localhost'
     const u =
       typeof url === 'string'
-        ? new URL(url, window?.location?.origin)
+        ? new URL(url, base ?? fallbackBase)
         : new URL(url)
 
-    const existingParams = new URLSearchParams(u.search)
+    const existingParams = fromString(u.search)
     const newParams = makeSearchParams(params)
     for (const [key, value] of newParams.entries()) {
       existingParams.set(key, value)
@@ -173,26 +180,30 @@ export namespace FexiosQueryBuilder {
    * // -> { 'arr[]': ['only-one-value'] }
    * ```
    */
-  export const toQueryRecord = <T = any>(searchParams: URLSearchParams): T => {
+  export const toQueryRecord = <T = Record<string, unknown>>(
+    searchParams:
+      | string
+      | URLSearchParams
+      | FormData
+      | Map<string, any>
+      | ReadonlyMap<string, any>
+  ): T => {
+    if (typeof searchParams === 'string') {
+      searchParams = fromString(searchParams)
+    }
+
     const out: any = {}
 
     const parseKey = (key: string): { path: string[]; forceArray: boolean } => {
-      if (!key.includes('[')) {
-        // plain key, keep as-is
-        return { path: [key], forceArray: false }
-      }
-
+      if (!key.includes('[')) return { path: [key], forceArray: false }
       const base = key.slice(0, key.indexOf('['))
       const parts: string[] = [base]
       const re = /\[([^\]]*)\]/g
-
       let m: RegExpExecArray | null
       let forceArray = false
       let lastWasEmpty = false
-
       while ((m = re.exec(key))) {
         if (m[1] === '') {
-          // empty [] indicates array semantics
           forceArray = true
           lastWasEmpty = true
         } else {
@@ -200,12 +211,9 @@ export namespace FexiosQueryBuilder {
           lastWasEmpty = false
         }
       }
-
-      // If the key ends with [], keep the [] suffix on the final named segment
       if (forceArray && lastWasEmpty) {
         parts[parts.length - 1] = parts[parts.length - 1] + '[]'
       }
-
       return { path: parts, forceArray }
     }
 
@@ -216,11 +224,9 @@ export namespace FexiosQueryBuilder {
       forceArray: boolean
     ) => {
       let cur = obj
-
       for (let i = 0; i < path.length; i++) {
         const k = path[i]
         const last = i === path.length - 1
-
         if (last) {
           if (forceArray) {
             if (cur[k] === undefined) cur[k] = [value]
@@ -244,12 +250,37 @@ export namespace FexiosQueryBuilder {
       }
     }
 
-    for (const [rawKey, val] of searchParams) {
-      const { path, forceArray } = parseKey(rawKey)
-      setDeep(out, path, val, forceArray)
+    for (const [rawKey, val] of searchParams.entries()) {
+      const { path, forceArray } = parseKey(String(rawKey))
+      setDeep(out, path, val?.toString(), forceArray)
     }
 
     return out as T
+  }
+
+  /**
+   * Convert a string to a URLSearchParams object.
+   * @param s - The string to convert.
+   * @returns The URLSearchParams object.
+   * @example
+   * ```
+   * fromString('?a=1&b=2') // URLSearchParams { 'a' => '1', 'b' => '2' }
+   * fromString('a=1&b=2') // URLSearchParams { 'a' => '1', 'b' => '2' }
+   * fromString('https://x.com/path?a=1#hash') // URLSearchParams { 'a' => '1' }
+   * ```
+   */
+  export const fromString = (s: string): URLSearchParams => {
+    const t = s.trim()
+    if (!t) return new URLSearchParams()
+    if (t.startsWith('?')) return new URLSearchParams(t.slice(1))
+    // full URL like https://x.com/path?a=1#hash
+    const qIndex = t.indexOf('?')
+    if (qIndex >= 0) {
+      const hashIndex = t.indexOf('#', qIndex + 1)
+      const query = t.slice(qIndex + 1, hashIndex >= 0 ? hashIndex : undefined)
+      return new URLSearchParams(query)
+    }
+    return new URLSearchParams(t)
   }
 
   /**
@@ -267,81 +298,81 @@ export namespace FexiosQueryBuilder {
    * mergeQueries({ a: '1' }, new URLSearchParams('b=2&c=3')) // { a: '1', b: '2', c: '3' }
    */
   export const mergeQueries = <T = any>(
-    original: Record<string, any> | URLSearchParams | string,
+    original:
+      | Record<string, any>
+      | URLSearchParams
+      | FormData
+      | Map<string, any>
+      | ReadonlyMap<string, any>
+      | string,
     ...incomes: Array<
-      Record<string, any> | URLSearchParams | string | null | undefined
+      | Record<string, any>
+      | URLSearchParams
+      | FormData
+      | Map<string, any>
+      | ReadonlyMap<string, any>
+      | string
+      | null
+      | undefined
     >
   ): T => {
-    const isPlainObject = (v: any): v is Record<string, any> =>
-      v !== null && typeof v === 'object' && v.constructor === Object
-
-    const clone = (v: any): any => {
-      if (Array.isArray(v)) return v.map(clone)
-      if (isPlainObject(v)) {
-        const o: any = {}
-        for (const [k, val] of Object.entries(v)) o[k] = clone(val)
-        return o
-      }
-      return v
-    }
-
-    // Accepts:
-    // - '?a=1&b=2'
-    // - 'a=1&b=2'
-    // - 'https://x.com/path?a=1#hash'
-    const spFromString = (s: string): URLSearchParams => {
-      const t = s.trim()
-      if (!t) return new URLSearchParams()
-      if (t.startsWith('?')) return new URLSearchParams(t.slice(1))
-      if (t.includes('?'))
-        return new URLSearchParams(t.slice(t.indexOf('?') + 1))
-      return new URLSearchParams(t)
-    }
-
-    const toPlain = (src: any): Record<string, any> => {
-      if (!src) return {}
-      if (src instanceof URLSearchParams) return toQueryRecord(src)
-      if (typeof src === 'string') return toQueryRecord(spFromString(src))
-      if (isPlainObject(src)) return src
-      throw new TypeError(
-        'only plain object, URLSearchParams, or query string is supported'
-      )
-    }
-
     const result: Record<string, any> = clone(toPlain(original))
-
-    const apply = (target: Record<string, any>, patch: Record<string, any>) => {
-      for (const [k, v] of Object.entries(patch)) {
-        if (v === undefined) continue
-        if (v === null) {
-          delete target[k]
-          continue
-        }
-        const cur = target[k]
-        if (isPlainObject(cur) && isPlainObject(v)) {
-          apply(cur, v)
-        } else {
-          target[k] = clone(v)
-        }
-      }
-    }
 
     for (const income of incomes) {
       if (income == null) continue
-      if (income instanceof URLSearchParams) {
-        apply(result, toQueryRecord(income))
-      } else if (typeof income === 'string') {
-        apply(result, toPlain(income))
-      } else {
-        if (typeof income !== 'object' || income.constructor !== Object) {
-          throw new TypeError(
-            'only plain object, URLSearchParams, or query string is supported'
-          )
-        }
-        apply(result, income)
-      }
+      mergeOne(result, toPlain(income))
     }
 
     return result as T
+  }
+
+  // internal utils
+  function clone(v: any): any {
+    if (Array.isArray(v)) return v.map(clone)
+    if (checkIsPlainObject(v)) {
+      const o: any = {}
+      for (const [k, val] of Object.entries(v)) o[k] = clone(val)
+      return o
+    }
+    if (v instanceof Map) {
+      // Normalize Map clone as a plain object to keep return type consistent
+      const o: any = {}
+      for (const [k, val] of v.entries()) o[k] = clone(val)
+      return o
+    }
+    return v
+  }
+
+  function toPlain(src: any): Record<string, any> {
+    if (!src) return {}
+    if (
+      src instanceof URLSearchParams ||
+      src instanceof FormData ||
+      src instanceof Map
+    )
+      return toQueryRecord(src)
+    if (typeof src === 'string') return toQueryRecord(fromString(src))
+    if (checkIsPlainObject(src)) return src
+    throw new TypeError(
+      `unsupported type transformation, got: ${Object.prototype.toString.call(
+        src
+      )}`
+    )
+  }
+
+  function mergeOne(target: Record<string, any>, patch: Record<string, any>) {
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === undefined) continue
+      if (v === null) {
+        delete target[k]
+        continue
+      }
+      const cur = target[k]
+      if (checkIsPlainObject(cur) && checkIsPlainObject(v)) {
+        mergeOne(cur, v)
+      } else {
+        target[k] = clone(v)
+      }
+    }
   }
 }
