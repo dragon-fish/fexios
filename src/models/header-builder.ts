@@ -1,3 +1,5 @@
+import { checkIsPlainObject } from '../utils.js'
+
 /**
  * Static utility class for building and merging HTTP Headers
  *
@@ -8,7 +10,7 @@
  */
 export namespace FexiosHeaderBuilder {
   /**
-   * Build a Headers object from a plain record or an existing Headers.
+   * Build a Headers object from a plain record, a Map/ReadonlyMap, or an existing Headers.
    *
    * Rules:
    * - Only top-level keys are considered.
@@ -23,28 +25,50 @@ export namespace FexiosHeaderBuilder {
    * ```
    */
   export const makeHeaders = (
-    init?: Record<string, unknown> | Headers
+    init?:
+      | Record<string, unknown>
+      | Headers
+      | Map<string, unknown>
+      | ReadonlyMap<string, unknown>
   ): Headers => {
     if (!init) return new Headers()
     if (init instanceof Headers) return new Headers(init)
 
-    if (typeof init !== 'object' || init.constructor !== Object) {
-      throw new TypeError('only plain object or Headers is supported')
+    const h = new Headers()
+
+    if (init instanceof Map) {
+      for (const [k, v] of init.entries()) {
+        if (v == null) continue
+        if (Array.isArray(v)) {
+          for (const item of v) {
+            if (item == null) continue
+            h.append(k, String(item))
+          }
+        } else {
+          h.append(k, String(v))
+        }
+      }
+      return h
     }
 
-    const h = new Headers()
-    for (const [k, v] of Object.entries(init)) {
-      if (v == null) continue
-      if (Array.isArray(v)) {
-        for (const item of v) {
-          if (item == null) continue
-          h.append(k, String(item))
+    if (checkIsPlainObject(init)) {
+      for (const [k, v] of Object.entries(init)) {
+        if (v == null) continue
+        if (Array.isArray(v)) {
+          for (const item of v) {
+            if (item == null) continue
+            h.append(k, String(item))
+          }
+        } else {
+          h.append(k, String(v))
         }
-      } else {
-        h.append(k, String(v))
       }
+      return h
     }
-    return h
+
+    throw new TypeError(
+      'only plain object, Map/ReadonlyMap, or Headers is supported'
+    )
   }
 
   /**
@@ -62,14 +86,39 @@ export namespace FexiosHeaderBuilder {
    * ```
    */
   export const toHeaderRecord = (
-    headers: Headers
+    input: Headers | Map<string, unknown> | ReadonlyMap<string, unknown>
   ): Record<string, string[]> => {
-    const out: Record<string, string[]> = {}
-    headers.forEach((value, key) => {
-      // We keep whatever the runtime provides as a single element array.
-      out[key] = out[key] ? [...out[key], value] : [value]
-    })
-    return out
+    // Headers → values are what the runtime provides (often joined)
+    if (input instanceof Headers) {
+      const out: Record<string, string[]> = {}
+      input.forEach((value, key) => {
+        out[key] = out[key] ? [...out[key], value] : [value]
+      })
+      return out
+    }
+
+    // Map / ReadonlyMap
+    if (input instanceof Map) {
+      const out: Record<string, string[]> = {}
+      for (const [key, raw] of input.entries()) {
+        if (raw == null) continue
+        if (Array.isArray(raw)) {
+          const arr = raw.filter((v) => v != null).map((v) => String(v))
+          if (arr.length) out[key] = (out[key] ?? []).concat(arr)
+        } else {
+          const v = String(raw)
+          out[key] = out[key] ? [...out[key], v] : [v]
+        }
+      }
+      return out
+    }
+
+    // 其余类型统一在这里报错（集中化异常）
+    throw new TypeError(
+      `unsupported type transformation, got: ${Object.prototype.toString.call(
+        input
+      )}`
+    )
   }
 
   /**
@@ -81,7 +130,7 @@ export namespace FexiosHeaderBuilder {
    * - Array value => remove the key first, then append each element.
    * - Other value => set/overwrite the key (single value).
    *
-   * Sources can be `Headers` or plain objects; processing order is left-to-right.
+   * Sources can be `Headers`, plain objects, or Map/ReadonlyMap; processing order is left-to-right.
    * The returned `Headers` is a fresh instance; the original is not mutated.
    *
    * @example
@@ -97,16 +146,26 @@ export namespace FexiosHeaderBuilder {
    * ```
    */
   export const mergeHeaders = (
-    original: Record<string, unknown> | Headers,
-    ...incomes: Array<Record<string, unknown> | Headers | null | undefined>
+    original:
+      | Record<string, unknown>
+      | Headers
+      | Map<string, unknown>
+      | ReadonlyMap<string, unknown>,
+    ...incomes: Array<
+      | Record<string, unknown>
+      | Headers
+      | Map<string, unknown>
+      | ReadonlyMap<string, unknown>
+      | null
+      | undefined
+    >
   ): Headers => {
-    // Start from a normalized copy to avoid mutating the original.
     const result =
       original instanceof Headers
         ? new Headers(original)
         : makeHeaders(original)
 
-    const applyObject = (patch: Record<string, unknown>) => {
+    const mergeOneFromObject = (patch: Record<string, unknown>) => {
       for (const [k, v] of Object.entries(patch)) {
         if (v === undefined) continue
         if (v === null) {
@@ -114,7 +173,7 @@ export namespace FexiosHeaderBuilder {
           continue
         }
         if (Array.isArray(v)) {
-          result.delete(k) // ensure clean slate before append
+          result.delete(k)
           for (const item of v) {
             if (item == null) continue
             result.append(k, String(item))
@@ -127,16 +186,23 @@ export namespace FexiosHeaderBuilder {
 
     for (const income of incomes) {
       if (income == null) continue
+
       if (income instanceof Headers) {
-        // Treat incoming Headers as concrete values to set (not append).
         income.forEach((value, key) => {
           result.set(key, value)
         })
-      } else {
-        if (typeof income !== 'object' || income.constructor !== Object) {
-          throw new TypeError('only plain object or Headers is supported')
-        }
-        applyObject(income)
+        continue
+      }
+
+      if (checkIsPlainObject(income)) {
+        mergeOneFromObject(income as unknown as Record<string, unknown>)
+        continue
+      }
+
+      const rec = toHeaderRecord(income as any)
+      for (const [key, arr] of Object.entries(rec)) {
+        result.delete(key)
+        for (const v of arr) result.append(key, v)
       }
     }
 
