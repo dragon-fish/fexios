@@ -12,7 +12,7 @@ export type FetchLike = (
 ) => Promise<Response>
 
 export interface FexiosConfigs {
-  baseURL: string
+  baseURL: string | URL
   timeout: number
   /**
    * In context, query value can be:
@@ -50,49 +50,48 @@ export interface FexiosContext<T = any> extends FexiosRequestOptions {
   data?: T
 }
 
-export type FexiosFinalContext<T = any> = Omit<
-  FexiosContext<T>,
-  'rawResponse' | 'response' | 'data' | 'headers'
-> & {
-  rawResponse: Response
-  response: IFexiosResponse<T>
-  headers: Headers
-  data: T
-}
+export type FexiosFinalContext<T = any> = Required<FexiosContext<T>>
 
 export type FexiosHook<C = unknown> = (
   context: C
-) => AwaitAble<C | void | false>
+) => AwaitAble<C | void | false | Response>
 
 export interface FexiosHookStore {
   event: FexiosLifecycleEvents
   action: FexiosHook
 }
 
-export type FexiosLifecycleEvents =
-  | 'beforeInit'
-  | 'beforeRequest'
-  | 'afterBodyTransformed'
-  | 'beforeActualFetch'
-  | 'afterResponse'
+export type FexiosLifecycleEvents = keyof FexiosLifecycleEventMap
 
-export interface FexiosHooksNameMap {
-  beforeInit: FexiosContext
-  beforeRequest: FexiosContext
-  afterBodyTransformed: FexiosContext
-  beforeActualFetch: FexiosContext
+export interface FexiosLifecycleEventMap {
+  beforeInit: Omit<
+    FexiosContext,
+    'rawRequest' | 'rawResponse' | 'response' | 'data'
+  >
+  beforeRequest: Required<
+    Omit<FexiosContext, 'rawRequest' | 'rawResponse' | 'response' | 'data'>
+  >
+  afterBodyTransformed: Required<
+    Omit<FexiosContext, 'rawRequest' | 'rawResponse' | 'response' | 'data'>
+  >
+  beforeActualFetch: Required<
+    Omit<FexiosContext, 'rawResponse' | 'response' | 'data'>
+  >
   afterResponse: FexiosFinalContext
 }
 
-export interface FexiosInterceptor {
+export interface FexiosInterceptor<
+  E extends FexiosLifecycleEvents,
+  C = FexiosLifecycleEventMap[E]
+> {
   handlers: () => FexiosHook[]
-  use: <C = FexiosContext>(hook: FexiosHook<C>, prepend?: boolean) => any
+  use: (hook: FexiosHook<C>, prepend?: boolean) => any
   clear: () => void
 }
 
 export interface FexiosInterceptors {
-  request: FexiosInterceptor
-  response: FexiosInterceptor
+  request: FexiosInterceptor<'beforeRequest'>
+  response: FexiosInterceptor<'afterResponse'>
 }
 
 type LowerAndUppercase<T extends string> = Lowercase<T> | Uppercase<T>
@@ -129,4 +128,4 @@ export interface IFexiosResponse<T = any> {
   data: T
 }
 
-export type FexiosPlugin = (app: Fexios) => Fexios
+export type FexiosPlugin = (app: Fexios) => void

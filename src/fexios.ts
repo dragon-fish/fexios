@@ -11,6 +11,8 @@ import type {
   FexiosInterceptor,
   FexiosInterceptors,
   FexiosRequestShortcut,
+  FexiosLifecycleEventMap,
+  FexiosPlugin,
 } from './types'
 import { FexiosError, FexiosErrorCodes } from './models/errors.js'
 import { FexiosResponse, resolveResponseBody } from './models/response.js'
@@ -29,6 +31,7 @@ export class Fexios extends CallableInstance<
   ],
   Promise<FexiosFinalContext<any>>
 > {
+  private static readonly FINAL_SYMBOL = Symbol('FEXIOS_FINAL')
   public baseConfigs: FexiosConfigs
   static readonly DEFAULT_CONFIGS: FexiosConfigs = {
     baseURL: '',
@@ -85,6 +88,7 @@ export class Fexios extends CallableInstance<
       ctx = { ...urlOrOptions, ...ctx }
     }
     ctx = await this.emit('beforeInit', ctx)
+    if ((ctx as any)[Fexios.FINAL_SYMBOL]) return ctx as any
 
     const baseUrlString =
       options.baseURL || this.baseConfigs.baseURL || globalThis.location?.href
@@ -132,6 +136,7 @@ export class Fexios extends CallableInstance<
     }
 
     ctx = await this.emit('beforeRequest', ctx)
+    if ((ctx as any)[Fexios.FINAL_SYMBOL]) return ctx as any
 
     let body: string | FormData | URLSearchParams | Blob | undefined
     if (typeof ctx.body !== 'undefined' && ctx.body !== null) {
@@ -173,6 +178,7 @@ export class Fexios extends CallableInstance<
 
     ctx.body = body
     ctx = await this.emit('afterBodyTransformed', ctx)
+    if ((ctx as any)[Fexios.FINAL_SYMBOL]) return ctx as any
 
     const abortController =
       ctx.abortController || globalThis.AbortController
@@ -190,6 +196,7 @@ export class Fexios extends CallableInstance<
     ctx.rawRequest = rawRequest
 
     ctx = await this.emit('beforeActualFetch', ctx)
+    if ((ctx as any)[Fexios.FINAL_SYMBOL]) return ctx as any
 
     const timeout = ctx.timeout || this.baseConfigs.timeout || 60 * 1000
 
@@ -306,7 +313,10 @@ export class Fexios extends CallableInstance<
   mergeQueries = FexiosQueryBuilder.mergeQueries
   mergeHeaders = FexiosHeaderBuilder.mergeHeaders
 
-  async emit<C = FexiosContext>(event: FexiosLifecycleEvents, ctx: C) {
+  async emit<E extends FexiosLifecycleEvents, C = FexiosLifecycleEventMap[E]>(
+    event: E,
+    ctx: C
+  ) {
     const hooks = this.hooks.filter((hook) => hook.event === event)
     try {
       let index = 0
@@ -318,7 +328,7 @@ export class Fexios extends CallableInstance<
         ;(ctx as any)[symbol] = symbol
 
         let hookResult = (await hook.action.call(this, ctx)) as Awaited<
-          C | void | false
+          C | void | false | Response
         >
         if (hookResult === void 0) {
           hookResult = ctx as any
@@ -331,6 +341,29 @@ export class Fexios extends CallableInstance<
             `Request aborted by hook "${hookName}"`,
             ctx as FexiosContext
           )
+        }
+        // Short-circuit with a raw Response returned by hook
+        else if (hookResult instanceof Response) {
+          const rawResponse = hookResult
+          const finalCtx: any = { ...(ctx as any), rawResponse }
+          const response = await resolveResponseBody(
+            rawResponse,
+            (ctx as any as FexiosContext).responseType,
+            (progress, buffer) => {
+              ;(ctx as any as FexiosContext).onProgress?.(progress, buffer)
+            }
+          )
+          finalCtx.response = response
+          finalCtx.data = response.data
+          finalCtx.headers = response.headers
+          if (event !== 'afterResponse') {
+            const after = (await this.emit('afterResponse', finalCtx)) as any
+            ;(after as any)[Fexios.FINAL_SYMBOL] = true
+            return after
+          } else {
+            ;(finalCtx as any)[Fexios.FINAL_SYMBOL] = true
+            return finalCtx
+          }
         }
         // Good
         else if (
@@ -364,8 +397,8 @@ export class Fexios extends CallableInstance<
     return ctx
   }
 
-  on<C = FexiosContext>(
-    event: FexiosLifecycleEvents,
+  on<E extends FexiosLifecycleEvents, C = FexiosLifecycleEventMap[E]>(
+    event: E,
     action: FexiosHook<C>,
     prepend = false
   ) {
@@ -382,6 +415,11 @@ export class Fexios extends CallableInstance<
     return this
   }
 
+  off<E extends FexiosLifecycleEvents>(
+    event: E,
+    action: FexiosHook<FexiosLifecycleEventMap[E]>
+  ): this
+  off(event: '*' | null, action: FexiosHook<any>): this
   off(event: FexiosLifecycleEvents | '*' | null, action: FexiosHook<any>) {
     if (event === '*' || !event) {
       this.hooks = this.hooks.filter((hook) => hook.action !== action)
@@ -395,13 +433,13 @@ export class Fexios extends CallableInstance<
 
   private createInterceptor<T extends FexiosLifecycleEvents>(
     event: T
-  ): FexiosInterceptor {
+  ): FexiosInterceptor<T> {
     return {
       handlers: () =>
         this.hooks
           .filter((hook) => hook.event === event)
           .map((hook) => hook.action),
-      use: <C = FexiosContext>(hook: FexiosHook<C>, prepend = false) => {
+      use: (hook, prepend = false) => {
         return this.on(event, hook, prepend)
       },
       clear: () => {
@@ -415,34 +453,36 @@ export class Fexios extends CallableInstance<
     response: this.createInterceptor('afterResponse'),
   }
 
-  private createMethodShortcut(method: FexiosMethods) {
-    Object.defineProperty(this, method, {
-      value: (
-        url: string | URL,
-        bodyOrQuery?: Record<string, any> | string | URLSearchParams,
-        options?: Partial<FexiosRequestOptions>
-      ) => {
-        if (
-          Fexios.METHODS_WITHOUT_BODY.includes(
-            method.toLocaleLowerCase() as FexiosMethods
-          )
-        ) {
-          options = bodyOrQuery as any
-        } else {
-          options = options || {}
-          options.body = bodyOrQuery
+  private createMethodShortcut<T extends Lowercase<FexiosMethods>>(method: T) {
+    Reflect.defineProperty(this, method, {
+      get: () => {
+        return (
+          url: string | URL,
+          bodyOrQuery?: Record<string, any> | string | URLSearchParams,
+          options?: Partial<FexiosRequestOptions>
+        ) => {
+          if (
+            Fexios.METHODS_WITHOUT_BODY.includes(
+              method.toLocaleLowerCase() as FexiosMethods
+            )
+          ) {
+            options = bodyOrQuery as any
+          } else {
+            options = options || {}
+            options.body = bodyOrQuery
+          }
+          return this.request(url, {
+            ...options,
+            method: method as FexiosMethods,
+          })
         }
-        return this.request(url, {
-          ...options,
-          method: method as FexiosMethods,
-        })
       },
     })
     return this
   }
 
   extends(configs: Partial<FexiosConfigs>) {
-    const fexios = new Fexios({ ...this.baseConfigs, ...configs })
+    const fexios = new Fexios(deepMerge(this.baseConfigs, configs))
     fexios.hooks = [...this.hooks]
     return fexios
   }
@@ -452,8 +492,9 @@ export class Fexios extends CallableInstance<
     return new Fexios(configs)
   }
 
-  plugin(apply: (app: Fexios) => Fexios) {
-    return apply(this)
+  plugin(apply: FexiosPlugin) {
+    apply(this)
+    return this
   }
 
   // 版本弃子们.jpg
