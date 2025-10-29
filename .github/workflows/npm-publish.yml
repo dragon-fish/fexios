@@ -14,9 +14,10 @@ on:
         required: false
         default: 'latest'
 
-# OIDC
 permissions:
   contents: read
+  # Required for OIDC
+  # https://docs.npmjs.com/trusted-publishers
   id-token: write
 
 concurrency:
@@ -28,7 +29,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NPM_CONFIG_PROVENANCE: true
-      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       NPM_TAG: ${{ inputs.npm_tag || 'latest' }}
     steps:
       - uses: actions/checkout@v4
@@ -46,6 +46,7 @@ jobs:
         with:
           node-version: lts/*
           cache: pnpm
+          registry-url: https://registry.npmjs.org/
 
       - name: get-npm-version
         id: package-version
@@ -79,11 +80,6 @@ jobs:
 
       - name: Unit test
         run: pnpm test
-
-      - name: Verify npm auth
-        run: |
-          npm ping
-          npm whoami || true
 
       - name: Publish
         run: pnpm publish --no-git-checks --tag "$NPM_TAG"
