@@ -4,15 +4,15 @@
 
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fdragon-fish%2Ffexios.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fdragon-fish%2Ffexios?ref=badge_shield)
 
-Fetch based HTTP client with similar API to axios for browser and Node.js
+类 Axios 语法的原生 fetch API 请求封装库
 
-~~fetch + axios = fexios~~ (Just a joke)
+~~fetch + axios = fexios~~ (神金)
 
 </div>
 
 [简体中文](README.zh_CN.md) | [English](README.md)
 
-## Features
+## 特色功能
 
 - [x] 🤯 Native fetch API (supports the Promise API)
 - [x] 🤫 Method shortcuts (`fexios.post()`)
@@ -23,9 +23,9 @@ Fetch based HTTP client with similar API to axios for browser and Node.js
 - [x] 🫡 Instance extendable
 - [x] 😍 Fricking tiny size: `index.umd.cjs  8.51 kB │ gzip: 3.48 kB │ map: 31.96 kB`
 
-## Installation
+## 安装
 
-**Using package manager**
+**包管理器**
 
 ```sh
 # Node Package Manager
@@ -36,21 +36,21 @@ pnpm add fexios
 yarn add fexios
 ```
 
-Then import the library and enjoy:
+然后导入库并开始使用：
 
 ```ts
 import fexios, { createFexios, Fexios } from 'fexios'
 
-// Using directly
+// 直接使用
 fexios.get('https://zh.moegirl.org.cn/api.php')
 
-// With options
+// 带配置项使用
 const fexios = createFexios(/* options */)
 const fexios = new Fexios(/* options */)
 const fexios = Fexios.create(/* options */)
 ```
 
-**Use directly in the browser**
+**在浏览器中直接使用**
 
 - JS Module
 
@@ -60,34 +60,34 @@ import('https://unpkg.com/fexios?module').then(({ createFexios }) => {
 })
 ```
 
-- Global variables
+- 全局变量
 
 ```html
 <script src="https://unpkg.com/fexios"></script>
 
 <script>
-  // Using directly
+  // 直接使用
   fexios.get('https://zh.moegirl.org.cn/api.php')
 
-  // With options
+  // 带配置项使用
   const { createFexios } = Fexios
   const fexios = createFexios(/* options */)
 </script>
 ```
 
-## Compatibility
+## 兼容性
 
-Refer: https://developer.mozilla.org/docs/Web/API/Fetch_API
+参考：https://developer.mozilla.org/docs/Web/API/Fetch_API
 
 | Chrome | Edge | Firefox | Opera | Safari          | Node.js                |
 | ------ | ---- | ------- | ----- | --------------- | ---------------------- |
 | 42     | 14   | 39      | 29    | 10.1 (iOS 10.3) | ^16.15.0 \|\| >=18.0.0 |
 
-\* Abort signal requires higher version.
+\* Abort signal 需要更高版本。
 
-## Usage
+## 使用方法
 
-You can find some sample code snippets [here](test/).
+你可以在[这里](test/)找到一些示例代码片段。
 
 ### new Fexios(configs: Partial\<FexiosConfigs>)
 
@@ -118,7 +118,7 @@ export interface FexiosConfigs {
 
 <details>
 
-<summary>Defaults</summary>
+<summary>默认配置</summary>
 
 ```ts
 const DEFAULT_CONFIGS = {
@@ -161,7 +161,7 @@ export interface FexiosRequestOptions extends Omit<FexiosConfigs, 'headers'> {
 
 </details>
 
-**returns {FexiosFinalContext}**
+**返回 {FexiosFinalContext}**
 
 ```ts
 export type FexiosFinalContext<T = any> = Omit<
@@ -183,7 +183,7 @@ export interface IFexiosResponse<T = any> {
 }
 ```
 
-And common request methods aliases:
+以及常用的请求方法别名：
 
 - fexios.get(url[, config])
 - fexios.delete(url[, config])
@@ -193,87 +193,87 @@ And common request methods aliases:
 - fexios.put(url[, data[, config]])
 - fexios.patch(url[, data[, config]])
 
-## Automatic Merge for Queries/Headers
+## 请求参数自动合并
 
-The url/query/headers parameters you pass in various places, as well as parameters modified in hook callbacks, will be automatically merged in order and according to the following rules to build the complete request URL and request headers.
+你在各处传入的 url/query/headers 参数，以及钩子回调中修改的参数，都会被按顺序、并按以下规则自动合并，最终构建出完整的请求 URL 和请求头。
 
-### Context Overwriting Rules
+### 上下文覆写规则
 
-- `ctx.query` could be: `Record<string, any> | URLSearchParams`
-- `ctx.headers` could be: `Record<string, string | string[] | null | undefined> | Headers`
+- `ctx.query` 可以是：`Record<string, any> | URLSearchParams`
+- `ctx.headers` 可以是：`Record<string, string | string[] | null | undefined> | Headers`
 
-Basic merging rules:
+基本合并规则：
 
-1. `undefined` value means no change for that key (keep from lower layer)
-2. `null` value means remove that key (delete, regardless of lower layer)
-3. Other values: overwrite with the new value
+1. `undefined` 值表示该键无变化（保留下层值）
+2. `null` 值表示移除该键（删除，无视下层）
+3. 其他值：用新值覆盖
 
-Details:
+详细信息：
 
-- Queries
-  - Accepts `Record<string, any>` or `URLSearchParams` (internally supports conversion from `string`/`FormData`/`Map` etc. to objects for merging).
-  - Arrays are expanded as duplicate keys; if the key name ends with `[]` (e.g., `'tags[]'`), it is forced to output with the `[]` suffix.
-  - Nested objects are expanded as `a[b][c]=...`; `undefined` preserves the lower layer value, `null` completely removes the key.
-- Headers
-  - Case-insensitive, internally processed according to `Headers` semantics.
-  - `string[]` first deletes the original value and then appends each item; `undefined` preserves, `null` deletes, normal values use set to overwrite.
-  - Automatic content type: When `content-type` is not explicitly specified, JSON object bodies are serialized and set to `application/json`; `FormData`/`URLSearchParams` let the runtime set it automatically (equivalent to setting the key to `null`).
+- 查询参数
+  - 接受 `Record<string, any>` 或 `URLSearchParams`（内部合并同时支持 `string`/`FormData`/`Map` 等转为对象后处理）。
+  - 数组会展开为重复键；若键名以 `[]` 结尾（如 `'tags[]'`），则强制以带 `[]` 的键输出。
+  - 嵌套对象会展开为 `a[b][c]=...` 的形式；`undefined` 会保留下层值，`null` 会彻底移除该键。
+- 请求头
+  - 大小写不敏感，内部统一按 `Headers` 语义处理。
+  - `string[]` 会先删除原值再逐一 append；`undefined` 保留，`null` 删除，普通值使用 set 覆盖。
+  - 自动内容类型：在未显式指定 `content-type` 时，JSON 对象体会被序列化并设置为 `application/json`；`FormData`/`URLSearchParams` 让运行时自行设置（等同于将该键置 `null`）。
 
-See [header-builder.spec.ts](src/models/header-builder.spec.ts) and [query-builder.spec.ts](src/models/query-builder.spec.ts) for more examples.
+更多示例请参阅 [header-builder.spec.ts](src/models/header-builder.spec.ts) 和 [query-builder.spec.ts](src/models/query-builder.spec.ts)。
 
-### Merge Priority
+### 合并优先级
 
-For easier understanding, the following describes "layers" from high to low; high layers can override low layers, `undefined` means "keep the lower layer value", `null` means "remove from the final result".
+为便于理解，下文把"层"从高到低描述；高层可覆盖低层，`undefined` 表示"保留低层值"，`null` 表示"从最终结果中移除"。
 
-- Without hooks (first normalization)
+- 无 hooks（首次归一化）
 
-  - Query: `ctx.query` (request options) > `ctx.url` (request URL's search part) > `baseConfigs.query` > `baseURL`'s search
+  - Query: `ctx.query`（请求选项） > `ctx.url`（请求 URL 的 search 部分） > `baseConfigs.query` > `baseURL` 的 search
   - Headers: `request options.headers` > `baseConfigs.headers`
 
-- With hooks (normalization after hooks)
-  - Query: `ctx.query` (modified by hooks) > `ctx.url` (modified URL's search by hooks) > original request URL's search (before hooks) > `baseConfigs.query` > `baseURL`'s search
-  - Headers: `ctx.headers` (modified by hooks) > `request options.headers` > `baseConfigs.headers`
+- 有 hooks（hooks 之后的归一化）
+  - Query: `ctx.query`（已被 hooks 修改） > `ctx.url`（已被 hooks 修改的 search） > 原始请求 URL 的 search（在 hooks 前） > `baseConfigs.query` > `baseURL` 的 search
+  - Headers: `ctx.headers`（已被 hooks 修改） > `request options.headers` > `baseConfigs.headers`
 
-Additional rules (consistent with unit tests):
+额外规则（与单测一致）：
 
-- If a key is set to `undefined` in hooks, the same key will not be overwritten by the "request URL layer" and will retain the lower layer value (usually the base layer).
-- If a key is set to `null`, it will be removed from the final result regardless of whether it exists in lower layers.
+- 若某键在 hooks 中被设置为 `undefined`，同名键将不会再被"请求 URL 层"覆盖，最终会保留更低层（通常是 base 层）的值。
+- 若某键被设置为 `null`，则无论下层是否存在都会从最终结果中删除。
 
-Example:
+示例：
 
 ```text
 base: keep=baseKeep
 request URL: keep=reqKeep
 hook: ctx.query.keep = undefined
-=> result keep=baseKeep (request URL ignored, base retained)
+=> 结果 keep=baseKeep （request URL 被忽略，保留 base）
 
 base: rm=baseRemove
 hook: ctx.query.rm = null
-=> result rm removed
+=> 结果 rm 被移除
 ```
 
-## Hooks
+## 钩子
 
-You can modify context in hooks' callback then return it as a brand new context™.
+你可以在钩子回调中修改上下文，然后将其作为全新的上下文 ™ 返回。
 
-Return `false` to abort request immediately.
+返回 `false` 立即中止请求。
 
 ```ts
 export type FexiosHook<C = unknown> = (
   context: C
 ) => AwaitAble<C | void | false>
 export interface FexiosContext<T = any> extends FexiosRequestOptions {
-  url: string // may changes after beforeInit
-  rawRequest?: Request // provide in beforeRequest
-  rawResponse?: Response // provide in afterRequest
-  response?: IFexiosResponse // provide in afterRequest
-  data?: T // provide in afterRequest
+  url: string // 可能在 beforeInit 后发生变化
+  rawRequest?: Request // 在 beforeRequest 中提供
+  rawResponse?: Response // 在 afterRequest 中提供
+  response?: IFexiosResponse // 在 afterRequest 中提供
+  data?: T // 在 afterRequest 中提供
 }
 ```
 
 <details>
 
-<summary>Hooks example</summary>
+<summary>钩子示例</summary>
 
 ```ts
 const fexios = new Fexios()
@@ -294,35 +294,35 @@ fexios.on('beforeRequest', async (ctx) => {
 
 ### beforeInit
 
-All context passed as is. You can do custom conversions here.
+所有上下文按原样传递。你可以在此处进行自定义转换。
 
 ### beforeRequest
 
-Pre-converted done.
+预转换已完成。
 
 ### afterBodyTransformed
 
-- `ctx.body`: `{string|URLSearchParams|FormData|Blob}` now available.
+- `ctx.body`: `{string|URLSearchParams|FormData|Blob}` 现在可用。
 
-JSON body has been transformed to JSON string. `Content-Type` header has been set to body's type.
+JSON 主体已转换为 JSON 字符串。`Content-Type` 头已设置为主体的类型。
 
 ### beforeActualFetch
 
-- `ctx.rawRequest`: `{Request}` now available.
+- `ctx.rawRequest`: `{Request}` 现在可用。
 
-The Request instance has been generated.
+Request 实例已生成。
 
-At this time, you cannot modify the `ctx.url`, `ctx.query`, `ctx.headers` or `ctx.body` (etc.) anymore. Unless you pass a brand new `Request` to replace `ctx.rawRequest`.
+此时，你不能再修改 `ctx.url`、`ctx.query`、`ctx.headers` 或 `ctx.body`（等）。除非你传递一个全新的 `Request` 来替换 `ctx.rawRequest`。
 
 ### afterResponse
 
-Anything will be read-only at this time.
+此时所有内容都是只读的。
 
-ctx is `FexiosFinalContext` now.
+ctx 现在是 `FexiosFinalContext`。
 
-### Short-circuit Response
+### 短路响应
 
-A hook callback can also return a `Response` at any time to short-circuit the request flow; Fexios will treat it as the final response and proceed to `afterResponse`:
+钩子回调还可以随时返回一个 `Response` 来短路请求流程，Fexios 会将其判定为最终响应并进入 `afterResponse`：
 
 ```ts
 fx.on('beforeActualFetch', () => {
@@ -333,23 +333,23 @@ fx.on('beforeActualFetch', () => {
 })
 ```
 
-### interceptors
+### 拦截器
 
-Oh, this is mimicked from axios. Just sweet sugar.
+好吧，这部分只是为了模仿 axios，它们只是齁甜的语法糖。
 
 <!-- prettier-ignore-start -->
 ```ts
-// They are the same
+// 这俩其实一个意思
 fexios.on('beforeRequest', async (ctx) => {})
 fexios.interceptors.request.use((ctx) =>  {})
 
-// Bro, they're just the same
+// 🦐 对的，完全一样
 fexios.on('afterResponse', async (ctx) => {})
 fexios.interceptors.response.use((ctx) => {})
 ```
 <!-- prettier-ignore-end -->
 
-## Plugin
+## 插件
 
 ```ts
 import type { FexiosPlugin } from 'fexios'
@@ -359,7 +359,7 @@ const authPlugin: FexiosPlugin = (app) => {
     ctx.headers = { ...ctx.headers, Authorization: 'Bearer token' }
     return ctx
   })
-  return app // You can return app, or omit the return value
+  return app // 你可以返回 app，或者省略返回值
 }
 
 const fx = new Fexios().plugin(authPlugin)
@@ -367,7 +367,7 @@ const fx = new Fexios().plugin(authPlugin)
 
 ---
 
-## License
+## 许可证
 
 > MIT License
 >
