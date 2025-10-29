@@ -78,7 +78,7 @@ jobs:
         run: pnpm build
 
       - name: Unit test
-        run: pnpm test --if-present
+        run: pnpm test
 
       - name: Verify npm auth
         run: |
