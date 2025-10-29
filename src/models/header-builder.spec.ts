@@ -33,6 +33,24 @@ describe('FexiosHeaderBuilder', () => {
     it('throws on non-plain input', () => {
       expect(() => makeHeaders(new Date() as any)).toThrow(TypeError)
     })
+
+    it('builds from Map: string / array (filter null) / object / ignore null-undefined', () => {
+      const m = new Map<string, any>([
+        ['x-a', '1'],
+        ['x-b', ['2', null, '3']],
+        ['x-c', { k: 1 }],
+        ['x-d', null],
+        ['x-e', undefined],
+      ])
+      const h = makeHeaders(m)
+      expect(h.get('x-a')).toBe('1')
+      const xb = h.get('x-b')!
+      expect(xb).toContain('2')
+      expect(xb).toContain('3')
+      expect(h.get('x-c')).toBe('[object Object]')
+      expect(h.has('x-d')).toBe(false)
+      expect(h.has('x-e')).toBe(false)
+    })
   })
 
   describe('toHeaderRecord', () => {
@@ -46,6 +64,24 @@ describe('FexiosHeaderBuilder', () => {
       expect(rec['x-list']!.length).toBe(1)
       expect(rec['x-list']![0]).toContain('a')
       expect(rec['x-list']![0]).toContain('b')
+    })
+
+    it('accepts Map and returns Record<string, string[]> with filtered nulls', () => {
+      const m = new Map<string, any>([
+        ['x-a', '1'],
+        ['x-b', ['2', null, '3']],
+        ['x-c', null],
+        ['x-d', undefined],
+      ])
+      const rec = toHeaderRecord(m)
+      expect(rec['x-a']).toEqual(['1'])
+      expect(rec['x-b']).toEqual(['2', '3'])
+      expect(rec['x-c']).toBeUndefined()
+      expect(rec['x-d']).toBeUndefined()
+    })
+
+    it('throws on unsupported input type', () => {
+      expect(() => toHeaderRecord(new Date() as any)).toThrow(TypeError)
     })
   })
 
@@ -111,6 +147,25 @@ describe('FexiosHeaderBuilder', () => {
     it('throws on non-plain object incomes', () => {
       const base = new Headers()
       expect(() => mergeHeaders(base, new Date() as any)).toThrow(TypeError)
+    })
+
+    it('accepts Map as income: reset then append arrays; overwrite single values', () => {
+      const base = new Headers()
+      base.append('x-k', 'old1')
+      base.append('x-k', 'old2')
+      base.set('x-x', '9')
+
+      const m = new Map<string, any>([
+        ['x-k', ['n1', null, 'n2']],
+        ['x-x', '10'],
+      ])
+      const merged = mergeHeaders(base, m)
+      const val = merged.get('x-k')!
+      expect(val).toContain('n1')
+      expect(val).toContain('n2')
+      expect(val).not.toContain('old1')
+      expect(val).not.toContain('old2')
+      expect(merged.get('x-x')).toBe('10')
     })
   })
 })

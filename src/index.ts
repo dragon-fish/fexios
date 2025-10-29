@@ -36,6 +36,7 @@ declare global {
     fexios: Fexios
   }
 }
+/* v8 ignore else -- @preserve */
 if (typeof globalThis !== 'undefined') {
   ;(globalThis as any).fexios = fexios
 } else if (typeof window !== 'undefined') {

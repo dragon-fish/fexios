@@ -359,7 +359,6 @@ describe('Cookie Jar Plugin', () => {
       const res = await fexios.get(
         `/set-cookie?cookieName=timestamp&cookieValue=${now}`
       )
-      console.info(res)
       expect(
         cookieJar.getCookie(
           'timestamp',

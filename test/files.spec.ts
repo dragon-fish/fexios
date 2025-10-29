@@ -34,7 +34,6 @@ describe('Fexios Download Binary Files', () => {
         responseType: 'blob',
       }
     )
-    console.info(data)
     expect(data).to.be.instanceOf(Blob)
     expect(data.type).to.equal('image/png')
   })

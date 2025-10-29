@@ -145,13 +145,10 @@ export namespace FexiosQueryBuilder {
         ? new URL(url, base ?? fallbackBase)
         : new URL(url)
 
-    const existingParams = fromString(u.search)
-    const newParams = makeSearchParams(params)
-    for (const [key, value] of newParams.entries()) {
-      existingParams.set(key, value)
-    }
-
-    u.search = existingParams.toString()
+    const existingParams = toQueryRecord(u.searchParams)
+    const mergedRecord = mergeQueries(existingParams, params || {})
+    const mergedParams = makeSearchParams(mergedRecord)
+    u.search = mergedParams.toString()
     u.hash = hash || ''
     return u
   }
