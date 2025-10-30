@@ -128,4 +128,7 @@ export interface IFexiosResponse<T = any> {
   data: T
 }
 
-export type FexiosPlugin = (app: Fexios) => void
+export type FexiosPlugin = {
+  name: string
+  install: (app: Fexios) => Fexios | Promise<Fexios> | void
+}

@@ -48,6 +48,7 @@ export default defineConfig(() => {
         lib: {
           entry: {
             index: './src/index.ts',
+            'plugins/index': './src/plugins/index.ts',
           },
           formats: ['es'],
           fileName: (format, entryName) => {
@@ -72,7 +73,7 @@ export default defineConfig(() => {
         dts({
           tsconfigPath: './tsconfig.app.json',
           entryRoot: './src',
-          bundleTypes: true,
+          // bundleTypes: true,
         }),
       ]
       break

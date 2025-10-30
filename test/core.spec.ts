@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import fexios, {
-  Fexios,
-  FexiosError,
-  FexiosFinalContext,
-  FexiosResponseError,
-  isFexiosError,
-} from '../src/index'
+import fexios, { Fexios, FexiosError, FexiosResponseError } from '../src/index'
 import { mockFetch, EchoResponse, MOCK_FETCH_BASE_URL } from './mockFetch.js'
 
 const time = '' + Date.now()
@@ -196,9 +190,12 @@ describe('Fexios Core', () => {
   })
 
   it('Callable instance', async () => {
-    const { data: data1 } = (await fexios(`${MOCK_FETCH_BASE_URL}/`, {
-      method: 'POST',
-    })) as FexiosFinalContext<EchoResponse>
+    const { data: data1 } = await fexios<EchoResponse>(
+      `${MOCK_FETCH_BASE_URL}/`,
+      {
+        method: 'POST',
+      }
+    )
     expect(data1).to.be.an('object')
     expect(data1.method).to.equal('POST')
   })

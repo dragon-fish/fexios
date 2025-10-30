@@ -1,4 +1,4 @@
-import CallableInstance from 'callable-instance'
+import CallableInstance from './models/callable-instance'
 import type {
   FexiosConfigs,
   FexiosContext,
@@ -24,13 +24,7 @@ import { FexiosHeaderBuilder } from './models/header-builder'
  * Fexios
  * @desc Fetch based HTTP client with similar API to axios for browser and Node.js
  */
-export class Fexios extends CallableInstance<
-  [
-    string | URL | Partial<FexiosRequestOptions>,
-    Partial<FexiosRequestOptions>?
-  ],
-  Promise<FexiosFinalContext<any>>
-> {
+export class Fexios extends CallableInstance<any, any> {
   private static readonly FINAL_SYMBOL = Symbol('FEXIOS_FINAL_CONTEXT')
   private static readonly NORMALIZED_SYMBOL = Symbol('FEXIOS_NORMALIZED_QUERY')
   public baseConfigs: FexiosConfigs
@@ -149,7 +143,8 @@ export class Fexios extends CallableInstance<
       } else if (typeof body === 'string' && typeof ctx.body === 'object') {
         headerAutoPatch['content-type'] = 'application/json'
       } else if (body instanceof Blob) {
-        headerAutoPatch['content-type'] = body.type || 'application/octet-stream'
+        headerAutoPatch['content-type'] =
+          body.type || 'application/octet-stream'
       }
     }
 
@@ -503,10 +498,15 @@ export class Fexios extends CallableInstance<
               } catch {}
             }
 
-            const hookRecord = ((ctx as any as FexiosContext).query || {}) as Record<string, any>
+            const hookRecord = ((ctx as any as FexiosContext).query ||
+              {}) as Record<string, any>
 
             // Merge priority (post-hook): ctx.query > ctx.url (post-hook) > baseline (pre-hook effective)
-            const mergedPlain = this.mergeQueries(baseline, reqURL.search, hookRecord)
+            const mergedPlain = this.mergeQueries(
+              baseline,
+              reqURL.search,
+              hookRecord
+            )
             ;(ctx as any as FexiosContext).query = mergedPlain as any
 
             // strip search from url and keep hash
@@ -615,7 +615,13 @@ export class Fexios extends CallableInstance<
 
   extends(configs: Partial<FexiosConfigs>) {
     const fexios = new Fexios(deepMerge(this.baseConfigs, configs))
+    // clone hooks
     fexios.hooks = [...this.hooks]
+    // clone and reinstall plugins
+    fexios._plugins = new Map(this._plugins)
+    fexios._plugins.forEach(async (plugin) => {
+      await fexios.plugin(plugin)
+    })
     return fexios
   }
 
@@ -624,8 +630,22 @@ export class Fexios extends CallableInstance<
     return new Fexios(configs)
   }
 
-  plugin(apply: FexiosPlugin) {
-    apply(this)
+  private _plugins = new Map<string, FexiosPlugin>()
+  async plugin(plugin: FexiosPlugin) {
+    if (
+      typeof plugin?.name === 'string' &&
+      typeof plugin?.install === 'function'
+    ) {
+      if (this._plugins.has(plugin.name)) {
+        // already installed
+        return this
+      }
+      const fx = await plugin.install(this)
+      this._plugins.set(plugin.name, plugin)
+      if (fx instanceof Fexios) {
+        return fx
+      }
+    }
     return this
   }
 
@@ -635,6 +655,24 @@ export class Fexios extends CallableInstance<
 
   /** @deprecated Use `mergeQueries` instead */
   readonly mergeQuery = this.mergeQueries
+}
+
+// 魔术技巧
+export interface Fexios {
+  <T = any>(
+    url: string | URL,
+    options?: Partial<FexiosRequestOptions>
+  ): Promise<FexiosFinalContext<T>>
+  <T = any>(
+    options: Partial<FexiosRequestOptions> & { url: string | URL }
+  ): Promise<FexiosFinalContext<T>>
+  <T = any>(
+    urlOrOptions:
+      | string
+      | URL
+      | (Partial<FexiosRequestOptions> & { url: string | URL }),
+    options?: Partial<FexiosRequestOptions>
+  ): Promise<FexiosFinalContext<T>>
 }
 
 // declare method shortcuts
