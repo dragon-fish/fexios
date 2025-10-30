@@ -43,6 +43,15 @@ import fexios, { createFexios, Fexios } from 'fexios'
 
 // Using directly
 fexios.get('https://zh.moegirl.org.cn/api.php')
+// Yes, it's callable! Just like axios
+fexios({
+  url: 'https://zh.moegirl.org.cn/api.php',
+  method: 'GET',
+})
+fexios('https://zh.moegirl.org.cn/api.php', {
+  method: 'POST',
+  body: { foo: 'bar' },
+})
 
 // With options
 const fexios = createFexios(/* options */)

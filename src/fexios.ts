@@ -24,7 +24,13 @@ import { FexiosHeaderBuilder } from './models/header-builder'
  * Fexios
  * @desc Fetch based HTTP client with similar API to axios for browser and Node.js
  */
-export class Fexios extends CallableInstance<any, any> {
+export class Fexios extends CallableInstance<
+  [
+    string | URL | (Partial<FexiosRequestOptions> & { url: string | URL }),
+    Partial<FexiosRequestOptions>?
+  ],
+  Promise<FexiosFinalContext<any>>
+> {
   private static readonly FINAL_SYMBOL = Symbol('FEXIOS_FINAL_CONTEXT')
   private static readonly NORMALIZED_SYMBOL = Symbol('FEXIOS_NORMALIZED_QUERY')
   public baseConfigs: FexiosConfigs
@@ -665,13 +671,6 @@ export interface Fexios {
   ): Promise<FexiosFinalContext<T>>
   <T = any>(
     options: Partial<FexiosRequestOptions> & { url: string | URL }
-  ): Promise<FexiosFinalContext<T>>
-  <T = any>(
-    urlOrOptions:
-      | string
-      | URL
-      | (Partial<FexiosRequestOptions> & { url: string | URL }),
-    options?: Partial<FexiosRequestOptions>
   ): Promise<FexiosFinalContext<T>>
 }
 
