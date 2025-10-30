@@ -1,13 +1,6 @@
-import {
-  describe,
-  expect,
-  it,
-  vi,
-  beforeAll,
-  afterAll,
-  beforeEach,
-} from 'vitest'
+import { describe, expect, it, beforeAll } from 'vitest'
 import { Fexios } from '../src/index'
+import { MOCK_FETCH_BASE_URL, mockFetch } from './mockFetch'
 
 /**
  * Integration tests that involve actual HTTP requests with mocked fetch
@@ -15,26 +8,13 @@ import { Fexios } from '../src/index'
  */
 
 describe('Integration Tests - HTTP Requests with Merge Logic', () => {
-  let mockFetch: any
+  let fexios: Fexios
 
   beforeAll(() => {
-    mockFetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ success: true }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      })
-    )
-    global.fetch = mockFetch
-    Fexios.DEFAULT_CONFIGS.fetch = mockFetch as any
-  })
-
-  beforeEach(() => {
-    mockFetch.mockClear()
-  })
-
-  afterAll(() => {
-    vi.restoreAllMocks()
-    Fexios.DEFAULT_CONFIGS.fetch = globalThis.fetch
+    fexios = new Fexios({
+      baseURL: MOCK_FETCH_BASE_URL,
+      fetch: mockFetch,
+    })
   })
 
   describe('Query parameters in HTTP requests', () => {
@@ -42,10 +22,11 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
       // This simulates the usage pattern mentioned in the request
       const testFexios = new Fexios({
         baseURL: 'https://api.example.com',
+        fetch: mockFetch,
         headers: { 'X-Removed': 'true' },
       })
 
-      await testFexios.get('/foo?bar=1&qux=2', {
+      const res = await testFexios.get('/foo?bar=1&qux=2', {
         query: {
           bar: undefined, // This should be ignored
           baz: 'test', // This should be kept
@@ -58,26 +39,17 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
         },
       })
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.objectContaining({
-          url: expect.stringContaining('baz=test'),
-        })
-      )
+      // URL should contain baz=test
+      expect(res.data.url).toContain('baz=test')
 
       // URL should not contain bar since it was undefined
-      const calledUrl = mockFetch.mock.calls[0][0].url
+      const calledUrl = res.data.url
       expect(calledUrl).toContain('bar=1')
       expect(calledUrl).not.toContain('qux=')
       expect(calledUrl).toContain('baz=test')
 
       // Headers should not contain undefined values
-      const calledHeaders =
-        mockFetch.mock.calls[0][1]?.headers ||
-        mockFetch.mock.calls[0][0].headers
-      const headersObject =
-        calledHeaders instanceof Headers
-          ? Object.fromEntries(calledHeaders.entries())
-          : calledHeaders
+      const headersObject = res.data.headers
 
       expect(headersObject).toHaveProperty('authorization', 'Bearer token')
       expect(headersObject).not.toHaveProperty('x-custom')
@@ -85,9 +57,12 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
     })
 
     it('should preserve falsy values that are not undefined or null', async () => {
-      const testFexios = new Fexios({ baseURL: 'https://api.example.com' })
+      const testFexios = new Fexios({
+        baseURL: 'https://api.example.com',
+        fetch: mockFetch,
+      })
 
-      await testFexios.get('/test', {
+      const res = await testFexios.get('/test', {
         query: {
           empty: '',
           zero: 0,
@@ -96,8 +71,7 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
           nullVal: null,
         },
       })
-
-      const calledUrl = mockFetch.mock.calls[0][0].url
+      const calledUrl = res.data.url
       expect(calledUrl).toContain('empty=')
       expect(calledUrl).toContain('zero=0')
       expect(calledUrl).toContain('falsy=false')
@@ -106,16 +80,18 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
     })
 
     it('should handle array query parameters in actual requests', async () => {
-      const testFexios = new Fexios({ baseURL: 'https://api.example.com' })
+      const testFexios = new Fexios({
+        baseURL: 'https://api.example.com',
+        fetch: mockFetch,
+      })
 
-      await testFexios.get('/test', {
+      const res = await testFexios.get('/test', {
         query: {
           foo: ['bar', 'baz'],
           single: 'value',
         },
       })
-
-      const calledUrl = mockFetch.mock.calls[0][0].url
+      const calledUrl = res.data.url
       const url = new URL(calledUrl)
 
       // Should have multiple foo parameters
@@ -129,16 +105,18 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
     })
 
     it('should handle array query parameters with [] suffix', async () => {
-      const testFexios = new Fexios({ baseURL: 'https://api.example.com' })
+      const testFexios = new Fexios({
+        baseURL: 'https://api.example.com',
+        fetch: mockFetch,
+      })
 
-      await testFexios.get('/test', {
+      const res = await testFexios.get('/test', {
         query: {
           'arr[]': ['bar', 'baz'],
           single: 'value',
         },
       })
-
-      const calledUrl = mockFetch.mock.calls[0][0].url
+      const calledUrl = res.data.url
       const url = new URL(calledUrl)
 
       // Should have multiple arr[] parameters
@@ -156,6 +134,7 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
     it('should merge headers with correct priority', async () => {
       const testFexios = new Fexios({
         baseURL: 'https://api.example.com',
+        fetch: mockFetch,
         headers: {
           Authorization: 'Bearer default-token',
           'X-Client': 'default-client',
@@ -163,7 +142,7 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
         },
       })
 
-      await testFexios.post(
+      const res = await testFexios.post(
         '/api',
         { data: 'test' },
         {
@@ -175,13 +154,7 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
         }
       )
 
-      const calledHeaders =
-        mockFetch.mock.calls[0][1]?.headers ||
-        mockFetch.mock.calls[0][0].headers
-      const headersObject =
-        calledHeaders instanceof Headers
-          ? Object.fromEntries(calledHeaders.entries())
-          : calledHeaders
+      const headersObject = res.data.headers
 
       // Verify priority: requestOptions overrides defaultOptions
       expect(headersObject.authorization).toBe('Bearer request-token')
@@ -199,26 +172,21 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
     it('should handle case-insensitive header overrides', async () => {
       const testFexios = new Fexios({
         baseURL: 'https://api.example.com',
+        fetch: mockFetch,
         headers: {
           'Content-Type': 'application/json',
           'X-API-Key': 'default-key',
         },
       })
 
-      await testFexios.get('/api', {
+      const res = await testFexios.get('/api', {
         headers: {
           'content-type': 'text/plain', // Different case
           'X-Api-Key': 'request-key', // Different case
         },
       })
 
-      const calledHeaders =
-        mockFetch.mock.calls[0][1]?.headers ||
-        mockFetch.mock.calls[0][0].headers
-      const headersObject =
-        calledHeaders instanceof Headers
-          ? Object.fromEntries(calledHeaders.entries())
-          : calledHeaders
+      const headersObject = res.data.headers
 
       // Headers should be case-insensitive, request options should win
       expect(headersObject['content-type']).toBe('text/plain')
@@ -231,6 +199,7 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
       const testFexios = new Fexios({
         baseURL:
           'https://api.example.com/?defaultinbase=default&overrideinbase=default&removeinbase=default',
+        fetch: mockFetch,
         query: {
           keep: 'default',
           nochange: 'default',
@@ -239,7 +208,7 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
         },
       })
 
-      await testFexios.get(
+      const res = await testFexios.get(
         '/path?override=url&addedinurl=yes&overrideinbase=url&removeinurl=yes',
         {
           query: {
@@ -252,8 +221,7 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
           },
         }
       )
-
-      const calledUrl = mockFetch.mock.calls[0][0].url
+      const calledUrl = res.data.url
       const url = new URL(calledUrl)
       const params = Object.fromEntries(url.searchParams.entries())
 
@@ -271,24 +239,25 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
     it('should match the documentation example', async () => {
       const fexios = new Fexios({
         baseURL: 'https://example.com/?from=baseURL',
+        fetch: mockFetch,
         query: {
           from: 'defaultOptions',
         },
       })
 
-      await fexios.get('/path?from=requestURL', {
+      const res = await fexios.get('/path?from=requestURL', {
         query: {
           from: 'requestOptions',
         },
       })
-
-      const calledUrl = mockFetch.mock.calls[0][0].url
+      const calledUrl = res.data.url
       expect(calledUrl).toBe('https://example.com/path?from=requestOptions')
     })
 
     it('undefined means no-change, null means remove for query in hooks', async () => {
       const fx = new Fexios({
         baseURL: 'https://example.com/?a=baseURL&keep=baseKeep&rm=baseRemove',
+        fetch: mockFetch,
         query: { a: 'baseQuery', keep: 'baseKeep', rm: 'baseRemove' },
       })
 
@@ -306,11 +275,10 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
         return ctx
       })
 
-      await fx.get('/ignored?keep=reqKeep', {
+      const res = await fx.get('/ignored?keep=reqKeep', {
         query: { a: 'request', extra: 'req' },
       })
-
-      const calledUrl = mockFetch.mock.calls[0][0].url
+      const calledUrl = res.data.url
       const url = new URL(calledUrl)
       const params = Object.fromEntries(url.searchParams.entries())
 
@@ -332,6 +300,7 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
       const fx = new Fexios({
         baseURL:
           'https://example.com/?from=baseURL&keep=baseKeep&remove=baseRemove',
+        fetch: mockFetch,
         query: {
           from: 'baseQuery',
           keep: 'baseKeep',
@@ -339,8 +308,7 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
           onlyBase: 'yes',
         },
       })
-
-      await fx.get('/path?from=requestURL&u=urlOnly', {
+      const res = await fx.get('/path?from=requestURL&u=urlOnly', {
         query: {
           from: 'requestQuery', // highest among layers (no hooks): should win
           keep: undefined, // keep baseQuery's keep
@@ -348,8 +316,7 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
           add: 'new',
         },
       })
-
-      const calledUrl = mockFetch.mock.calls[0][0].url
+      const calledUrl = res.data.url
       const url = new URL(calledUrl)
       const params = Object.fromEntries(url.searchParams.entries())
 
@@ -367,6 +334,7 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
       const fx = new Fexios({
         baseURL:
           'https://example.com/?from=baseURL&keep=baseKeep&remove=baseRemove',
+        fetch: mockFetch,
         query: {
           from: 'baseQuery',
           keep: 'baseKeep',
@@ -391,14 +359,13 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
         return ctx
       })
 
-      await fx.get('/path?from=requestURL&keep=reqKeep', {
+      const res = await fx.get('/path?from=requestURL&keep=reqKeep', {
         query: {
           from: 'requestQuery', // request options; lower than hook's ctx.query
           add: 'fromRequest',
         },
       })
-
-      const calledUrl = mockFetch.mock.calls[0][0].url
+      const calledUrl = res.data.url
       const url = new URL(calledUrl)
       const params = Object.fromEntries(url.searchParams.entries())
 
@@ -417,6 +384,7 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
     it('ctx.headers (including hook) should override request options and baseConfigs', async () => {
       const fx = new Fexios({
         baseURL: 'https://api.example.com',
+        fetch: mockFetch,
         headers: {
           'X-Default': 'base',
           'X-Del': 'will',
@@ -433,7 +401,7 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
         return ctx
       })
 
-      await fx.get('/h', {
+      const res = await fx.get('/h', {
         headers: {
           'X-Default': 'request',
           'X-Del': null, // delete
@@ -441,13 +409,7 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
         },
       })
 
-      const calledHeaders =
-        mockFetch.mock.calls[0][1]?.headers ||
-        mockFetch.mock.calls[0][0].headers
-      const headersObject =
-        calledHeaders instanceof Headers
-          ? Object.fromEntries(calledHeaders.entries())
-          : calledHeaders
+      const headersObject = res.data.headers
 
       expect(headersObject['x-default']).toBe('hook') // hook wins
       expect(headersObject['x-del']).toBeUndefined() // deleted by request options
@@ -458,6 +420,7 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
     it('undefined means no-change, null means remove for headers in hooks and request options', async () => {
       const fx = new Fexios({
         baseURL: 'https://api.example.com',
+        fetch: mockFetch,
         headers: {
           'X-Base': 'B',
           'X-Keep': 'K',
@@ -475,7 +438,7 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
         return ctx
       })
 
-      await fx.get('/h', {
+      const res = await fx.get('/h', {
         headers: {
           'X-Base': 'REQ',
           'X-Keep': undefined, // no change (keep K)
@@ -484,13 +447,7 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
         },
       })
 
-      const calledHeaders =
-        mockFetch.mock.calls[0][1]?.headers ||
-        mockFetch.mock.calls[0][0].headers
-      const headersObject =
-        calledHeaders instanceof Headers
-          ? Object.fromEntries(calledHeaders.entries())
-          : calledHeaders
+      const headersObject = res.data.headers
 
       // Highest (hook) wins
       expect(headersObject['x-base']).toBe('HOOK')
