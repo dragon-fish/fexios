@@ -1,4 +1,4 @@
-import { checkIsPlainObject } from '../utils.js'
+import { isPlainObject } from "@/utils/isPlainObject.js"
 
 /**
  * Static utility class for building and merging HTTP Headers
@@ -51,7 +51,7 @@ export namespace FexiosHeaderBuilder {
       return h
     }
 
-    if (checkIsPlainObject(init)) {
+    if (isPlainObject(init)) {
       for (const [k, v] of Object.entries(init)) {
         if (v == null) continue
         if (Array.isArray(v)) {
@@ -194,7 +194,7 @@ export namespace FexiosHeaderBuilder {
         continue
       }
 
-      if (checkIsPlainObject(income)) {
+      if (isPlainObject(income)) {
         mergeOneFromObject(income as unknown as Record<string, unknown>)
         continue
       }

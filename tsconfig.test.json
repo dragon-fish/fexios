@@ -1,5 +1,5 @@
 {
-  "include": ["test", "src", "*.config.ts", "package.json"],
+  "include": ["test", "src", "*.config.ts", "package.json", "build.config.1.ts"],
   "compilerOptions": {
     "target": "ES2020",
     "module": "ESNext",
@@ -11,7 +11,7 @@
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
-    "types": ["node", "vitest", "vite/client"],
+    "types": ["node", "vitest", "vite"],
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "paths": {
       "@/*": ["./src/*"]

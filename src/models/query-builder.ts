@@ -1,4 +1,4 @@
-import { checkIsPlainObject } from '@/utils.js'
+import { isPlainObject } from "@/utils/isPlainObject"
 
 /**
  * Static utility class for building URL search parameters
@@ -326,7 +326,7 @@ export namespace FexiosQueryBuilder {
   // internal utils
   function clone(v: any): any {
     if (Array.isArray(v)) return v.map(clone)
-    if (checkIsPlainObject(v)) {
+    if (isPlainObject(v)) {
       const o: any = {}
       for (const [k, val] of Object.entries(v)) o[k] = clone(val)
       return o
@@ -349,7 +349,7 @@ export namespace FexiosQueryBuilder {
     )
       return toQueryRecord(src)
     if (typeof src === 'string') return toQueryRecord(fromString(src))
-    if (checkIsPlainObject(src)) return src
+    if (isPlainObject(src)) return src
     throw new TypeError(
       `unsupported type transformation, got: ${Object.prototype.toString.call(
         src
@@ -365,7 +365,7 @@ export namespace FexiosQueryBuilder {
         continue
       }
       const cur = target[k]
-      if (checkIsPlainObject(cur) && checkIsPlainObject(v)) {
+      if (isPlainObject(cur) && isPlainObject(v)) {
         mergeOne(cur, v)
       } else {
         target[k] = clone(v)
