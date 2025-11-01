@@ -2,7 +2,7 @@ import type {
   FexiosConfigs,
   IFexiosResponse as IFexiosResponse,
 } from '../types'
-import { FexiosError, FexiosErrorCodes } from './errors.js'
+import { FexiosError, FexiosErrorCodes, FexiosResponseError } from './errors.js'
 
 /**
  * Fexios response wrapper class
@@ -48,10 +48,11 @@ async function readBody(
   let received = 0
 
   try {
-    for await (const chunk of stream as any) {
-      // 大多数现代浏览器支持
-      chunks.push(chunk)
-      received += chunk.length
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      chunks.push(value)
+      received += value.length
       if (onProgress && contentLength > 0)
         onProgress(received / contentLength, concat(chunks))
     }
@@ -107,11 +108,11 @@ const guessFexiosResponseType = (
 
 /**
  * Resolve response body based on content type and expected type
- * @param expectType `undefined` means auto-detect based on content-type header. And also try JSON.stringify if it's a string.
+ * @param expectedType `undefined` means auto-detect based on content-type header. And also try JSON.stringify if it's a string.
  */
 export async function createFexiosResponse<T = any>(
   rawResponse: Response,
-  expectType?: FexiosConfigs['responseType'],
+  expectedType?: FexiosConfigs['responseType'],
   onProgress?: (progress: number, buffer?: Uint8Array) => void,
   shouldThrow?: (response: FexiosResponse<any>) => boolean | void
 ): Promise<FexiosResponse<T>> {
@@ -120,28 +121,41 @@ export async function createFexiosResponse<T = any>(
   const lenHeader = rawResponse.headers.get('content-length')
   const total = lenHeader ? Number(lenHeader) : 0
 
+  // Check for upgrade headers for websocket/stream
+  const upgrade = rawResponse.headers.get('upgrade')?.toLowerCase()
+  const connection = rawResponse.headers.get('connection')?.toLowerCase()
+
   let resolvedType: IFexiosResponse['responseType'] =
-    expectType ?? guessFexiosResponseType(contentType) ?? 'text'
+    expectedType ?? guessFexiosResponseType(contentType) ?? 'text'
+
+  // Auto-detect websocket/stream from headers if not explicitly set
+  if (!expectedType) {
+    if (upgrade === 'websocket' && connection === 'upgrade') {
+      resolvedType = 'ws'
+    } else if (contentType.includes('text/event-stream')) {
+      resolvedType = 'stream'
+    }
+  }
 
   // special-cases that don't need body decoding
   if (resolvedType === 'stream') {
-    const wrapped = await createFexiosEventSourceResponse(
-      rawResponse.url,
-      rawResponse
-    )
-    const decide = shouldThrow?.(wrapped)
-    if (typeof decide === 'boolean' ? decide : !wrapped.ok) throw wrapped
-    return wrapped as FexiosResponse<T>
+    const url = rawResponse.url || (rawResponse as any).url || ''
+    const response = await createFexiosEventSourceResponse(url, rawResponse)
+    const decide = shouldThrow?.(response)
+    if (typeof decide === 'boolean' ? decide : !response.ok) {
+      throw new FexiosResponseError(response.statusText, response)
+    }
+    return response as FexiosResponse<T>
   }
   if (resolvedType === 'ws') {
     // fetch 不产生 WebSocket；这里只返回占位，交由上层处理
-    const wrapped = await createFexiosWebSocketResponse(
-      rawResponse.url,
-      rawResponse
-    )
-    const decide = shouldThrow?.(wrapped)
-    if (typeof decide === 'boolean' ? decide : !wrapped.ok) throw wrapped
-    return wrapped as FexiosResponse<T>
+    const url = rawResponse.url || (rawResponse as any).url || ''
+    const response = await createFexiosWebSocketResponse(url, rawResponse)
+    const decide = shouldThrow?.(response)
+    if (typeof decide === 'boolean' ? decide : !response.ok) {
+      throw new FexiosResponseError(response.statusText, response)
+    }
+    return response as FexiosResponse<T>
   }
 
   // decode helpers
@@ -150,19 +164,11 @@ export async function createFexiosResponse<T = any>(
 
   let data: any
 
-  // Choose reading path:
-  const needManual =
-    typeof onProgress === 'function' ||
-    resolvedType === 'arrayBuffer' ||
-    resolvedType === 'blob' ||
-    resolvedType === 'json' ||
-    resolvedType === 'text'
-
   try {
     if (resolvedType === 'form') {
-      // formData 让 fetch 自己解析（不支持计算进度）
+      // Resolve form data by fetch itself (no progress support)
       data = await rawResponse.formData()
-    } else if (needManual) {
+    } else {
       const bytes = await readBody(rawResponse.body!, total, onProgress)
       if (resolvedType === 'arrayBuffer') {
         data = bytes.buffer.slice(
@@ -170,14 +176,13 @@ export async function createFexiosResponse<T = any>(
           bytes.byteOffset + bytes.byteLength
         )
       } else if (resolvedType === 'blob') {
-        // @ts-ignore - Blob 在现代浏览器与 Node >=18 存在
         data = new Blob([bytes], {
           type: contentType || 'application/octet-stream',
         })
       } else if (resolvedType === 'text') {
         const text = decoder.decode(bytes)
-        // auto-detect: 若未显式期望类型且文本看起来像 JSON，尝试解析为 JSON
-        if (!expectType) {
+        // auto-detect: if no explicit expected type and text looks like JSON, try to parse as JSON
+        if (!expectedType) {
           const trimmed = text.trim()
           if (
             (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
@@ -199,76 +204,40 @@ export async function createFexiosResponse<T = any>(
         const text = decoder.decode(bytes)
         data = text.length ? JSON.parse(text) : null
       } else {
-        // 理论上覆盖不到
+        // theoretically should not reach here, unless user provides a expectedType out of scope
         data = bytes
-      }
-    } else {
-      // 不需要进度时优先使用内建便捷方法
-      switch (resolvedType) {
-        case 'arrayBuffer':
-          data = await rawResponse.arrayBuffer()
-          break
-        case 'blob':
-          data = await (rawResponse as any).blob()
-          break
-        case 'json':
-          // 某些后端返回空体但声明 json
-          try {
-            data = await rawResponse.json()
-          } catch {
-            const t = await rawResponse.text()
-            data = t ? JSON.parse(t) : null
-          }
-          break
-        case 'text':
-        default: {
-          const t = await rawResponse.text()
-          if (!expectType) {
-            const trimmed = t.trim()
-            if (
-              (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
-              (trimmed.startsWith('[') && trimmed.endsWith(']'))
-            ) {
-              try {
-                data = JSON.parse(trimmed)
-                resolvedType = 'json'
-                break
-              } catch {
-                // fallthrough to text
-              }
-            }
-          }
-          data = t
-          break
-        }
       }
     }
   } catch (e) {
-    // 解析失败时，最后的保底：尝试当作纯文本读取
+    // if parsing fails, try to read as plain text as last resort
     if (!(e instanceof Error)) throw e
     try {
       const t = await rawResponse.text()
       data = t
       resolvedType = 'text'
     } catch {
-      // 实在不行就抛原错误
-      throw e
+      // if reading as plain text fails, throw the original error
+      throw new FexiosError(
+        FexiosErrorCodes.BODY_TRANSFORM_ERROR,
+        `Failed to transform response body to ${resolvedType}`,
+        undefined,
+        { cause: e }
+      )
     }
   }
 
-  const wrapped = new FexiosResponse<T>(
+  const response = new FexiosResponse<T>(
     rawResponse as any,
     data as T,
     resolvedType
   )
 
-  const decision = shouldThrow?.(wrapped)
-  if (typeof decision === 'boolean' ? decision : !wrapped.ok) {
-    // 抛出已封装的响应，便于上层捕获并读取 data/status 等
-    throw wrapped
+  const decision = shouldThrow?.(response)
+  if (typeof decision === 'boolean' ? decision : !response.ok) {
+    throw new FexiosResponseError(response.statusText, response)
   }
 
-  return wrapped
+  return response
 }
 
 export async function createFexiosWebSocketResponse(
@@ -277,7 +246,7 @@ export async function createFexiosWebSocketResponse(
   timeout?: number
 ) {
   const ws = new WebSocket(url.toString())
-  const delay = timeout && timeout > 0 ? timeout : Number.MAX_SAFE_INTEGER
+  const delay = timeout && timeout > 0 ? timeout : 60000 // Default 60s timeout
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
       ws.close()

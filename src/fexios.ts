@@ -16,7 +16,6 @@ import type {
 } from './types'
 import { FexiosError, FexiosErrorCodes } from './models/errors.js'
 import {
-  FexiosResponse,
   createFexiosResponse,
   createFexiosWebSocketResponse,
 } from './models/response.js'
@@ -24,7 +23,6 @@ import { FexiosQueryBuilder } from './models/query-builder.js'
 import { deepMerge } from './utils/deepMerge'
 import { isPlainObject } from './utils/isPlainObject'
 import { FexiosHeaderBuilder } from './models/header-builder'
-import { clone } from './utils/clone.js'
 
 /**
  * Fexios
@@ -100,17 +98,11 @@ export class Fexios extends CallableInstance<
       | (Partial<FexiosRequestOptions> & { url: string | URL }),
     options?: Partial<FexiosRequestOptions>
   ): Promise<FexiosFinalContext<T>> {
-    let ctx: FexiosContext
+    let ctx: FexiosContext = (options || {}) as FexiosContext
     if (typeof urlOrOptions === 'string' || urlOrOptions instanceof URL) {
-      ctx = deepMerge(
-        this.baseConfigs,
-        { url: urlOrOptions.toString() },
-        options as Partial<FexiosContext>
-      )
+      ctx.url = urlOrOptions.toString()
     } else if (typeof urlOrOptions === 'object') {
-      ctx = deepMerge(this.baseConfigs, urlOrOptions as Partial<FexiosContext>)
-    } else {
-      ctx = clone(this.baseConfigs) as FexiosContext
+      ctx = urlOrOptions as FexiosContext
     }
     ctx = await this.emit('beforeInit', ctx, {
       shouldAdjustRequestParams: true,
@@ -270,15 +262,12 @@ export class Fexios extends CallableInstance<
         rawResponse,
         ctx.responseType,
         (progress, buffer) => {
-          console.info('Download progress:', progress)
           options?.onProgress?.(progress, buffer)
         }
       )
       ctx.data = ctx.response.data
       ctx.headers = ctx.response.headers
       ctx.responseType = ctx.response.responseType
-
-      console.info('afterResponse', ctx.responseType, ctx.data)
 
       return this.emit('afterResponse', ctx) as any
     } catch (error) {
@@ -298,7 +287,10 @@ export class Fexios extends CallableInstance<
   ): FexiosContext {
     const c = ctx as FexiosContext
     const baseUrlString =
-      c.baseURL || globalThis.location?.href || 'http://localhost'
+      c.baseURL ||
+      this.baseConfigs.baseURL ||
+      globalThis.location?.href ||
+      'http://localhost'
     const baseURL = new URL(
       baseUrlString,
       globalThis.location?.href || 'http://localhost'
@@ -319,8 +311,18 @@ export class Fexios extends CallableInstance<
     } else {
       // First normalization: apply defaults and base URL
       finalQuery = opts.requestOptionsOverridesURLSearchParams
-        ? this.mergeQueries(baseURL?.search || '', reqURL.search, c.query)
-        : this.mergeQueries(baseURL?.search || '', c.query, reqURL.search)
+        ? this.mergeQueries(
+            baseURL?.search || '',
+            this.baseConfigs.query,
+            reqURL.search,
+            c.query
+          )
+        : this.mergeQueries(
+            baseURL?.search || '',
+            this.baseConfigs.query,
+            c.query,
+            reqURL.search
+          )
       ;(c as any)[Fexios.NORMALIZED_SYMBOL] = true
     }
 
@@ -447,6 +449,7 @@ export class Fexios extends CallableInstance<
           try {
             const baseUrlString =
               (ctx as any as FexiosContext).baseURL ||
+              this.baseConfigs.baseURL ||
               globalThis.location?.href ||
               'http://localhost'
             const reqURL = new URL(
@@ -454,7 +457,7 @@ export class Fexios extends CallableInstance<
               baseUrlString
             )
 
-            // Use pre-hook normalized snapshot as baseline (reflecting baseURL/query/requestURL before hook)
+            // Use pre-hook normalized snapshot as baseline (reflecting baseURL/baseConfigs.query/query/requestURL before hook)
             let baseline: Record<string, any> = {}
             if (prevQueryStr) {
               try {

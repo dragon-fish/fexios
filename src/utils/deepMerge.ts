@@ -8,16 +8,16 @@ export function deepMerge<T = any>(
   const result: Record<PropertyKey, any> = clone(obj || ({} as T))
 
   for (const inc of incomes) {
-    // 整个 income 为 null/undefined：跳过（删除语义仅作用于“键的值为 null”的情况）
+    // skip if income is null/undefined
     if (inc == null) continue
 
     for (const key of Reflect.ownKeys(inc)) {
       const nextVal = (inc as any)[key]
 
-      // undefined = 不改动
+      // undefined = as is
       if (typeof nextVal === 'undefined') continue
 
-      // null = 删除属性
+      // null = delete property
       if (nextVal === null) {
         delete result[key]
         continue
@@ -25,10 +25,10 @@ export function deepMerge<T = any>(
 
       const prevVal = result[key]
       if (isPlainObject(prevVal) && isPlainObject(nextVal)) {
-        // 深合并 plain object
+        // deep merge plain object
         result[key] = deepMerge(prevVal, nextVal)
       } else {
-        // 其它情况直接覆写（含数组、Map/Set/Date 等：交给你的 clone）
+        // overwrite other types (including arrays, Map/Set/Date, etc.: replaced with incoming value)
         result[key] = clone(nextVal)
       }
     }
