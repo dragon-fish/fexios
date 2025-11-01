@@ -24,10 +24,10 @@
       "require": "./dist/models/index.cjs"
     },
     "./utils": {
-      "source": "./src/utils.ts",
-      "types": "./dist/utils.d.ts",
-      "import": "./dist/utils.mjs",
-      "require": "./dist/utils.cjs"
+      "source": "./src/utils/index.ts",
+      "types": "./dist/utils/index.d.ts",
+      "import": "./dist/utils/index.mjs",
+      "require": "./dist/utils/index.cjs"
     },
     "./plugins": {
       "types": "./dist/plugins/index.d.ts",

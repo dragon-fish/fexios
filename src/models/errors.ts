@@ -1,4 +1,4 @@
-import type { IFexiosContext, IFexiosResponse } from '../types.js'
+import type { FexiosContext, IFexiosResponse } from '../types.js'
 
 /**
  * Error codes for Fexios
@@ -25,7 +25,7 @@ export class FexiosError extends Error {
   constructor(
     readonly code: FexiosErrorCodes | string,
     message?: string,
-    readonly context?: IFexiosContext,
+    readonly context?: FexiosContext,
     options?: ErrorOptions
   ) {
     super(message, options)
