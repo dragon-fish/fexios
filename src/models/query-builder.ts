@@ -1,4 +1,4 @@
-import { isPlainObject } from "@/utils/isPlainObject"
+import { isPlainObject } from '@/utils/isPlainObject'
 
 /**
  * Static utility class for building URL search parameters
@@ -149,7 +149,7 @@ export namespace FexiosQueryBuilder {
     const mergedRecord = mergeQueries(existingParams, params || {})
     const mergedParams = makeSearchParams(mergedRecord)
     u.search = mergedParams.toString()
-    u.hash = hash || ''
+    if (typeof hash !== 'undefined') u.hash = hash
     return u
   }
 

@@ -117,16 +117,23 @@ export interface FexiosContext<T = any> extends FexiosRequestOptions {
 
 export type FexiosFinalContext<T = any> = Omit<
   Required<FexiosContext<T>>,
-  'onProgress' | 'abortController' | 'headers' | 'responseType'
+  | 'onProgress'
+  | 'abortController'
+  | 'headers'
+  | 'responseType'
+  | 'url'
+  | 'query'
 > & {
   /** Response Headers */
-  headers: Headers
+  readonly headers: Headers
   /**
    * Response type of data
    * If not set in request options, it will be guessed based on content-type header.
    * May be different from required responseType in request options.
    */
-  responseType: NonNullable<FexiosConfigs['responseType']>
+  readonly responseType: NonNullable<FexiosConfigs['responseType']>
+  /** Response URL */
+  readonly url: string
 }
 
 export type FexiosHook<C = unknown> = (

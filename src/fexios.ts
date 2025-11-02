@@ -266,9 +266,14 @@ export class Fexios extends CallableInstance<
           options?.onProgress?.(progress, buffer)
         }
       )
-      ctx.data = ctx.response.data
-      ctx.headers = ctx.response.headers
-      ctx.responseType = ctx.response.responseType
+      Object.defineProperties(ctx, {
+        url: {
+          get: () => rawResponse?.url || finalURLForRequest,
+        },
+        data: { get: () => ctx.response!.data },
+        headers: { get: () => rawResponse!.headers },
+        responseType: { get: () => ctx.response!.responseType },
+      })
 
       return this.emit('afterResponse', ctx) as any
     } catch (error) {
