@@ -1,4 +1,4 @@
-import { isPlainObject } from "@/utils/isPlainObject.js"
+import { isPlainObject } from '@/utils/isPlainObject.js'
 
 /**
  * Static utility class for building and merging HTTP Headers
@@ -25,19 +25,19 @@ export namespace FexiosHeaderBuilder {
    * ```
    */
   export const makeHeaders = (
-    init?:
+    input?:
       | Record<string, unknown>
       | Headers
       | Map<string, unknown>
       | ReadonlyMap<string, unknown>
   ): Headers => {
-    if (!init) return new Headers()
-    if (init instanceof Headers) return new Headers(init)
+    if (!input) return new Headers()
+    if (input instanceof Headers) return new Headers(input)
 
     const h = new Headers()
 
-    if (init instanceof Map) {
-      for (const [k, v] of init.entries()) {
+    if (input instanceof Map) {
+      for (const [k, v] of input.entries()) {
         if (v == null) continue
         if (Array.isArray(v)) {
           for (const item of v) {
@@ -51,8 +51,8 @@ export namespace FexiosHeaderBuilder {
       return h
     }
 
-    if (isPlainObject(init)) {
-      for (const [k, v] of Object.entries(init)) {
+    if (isPlainObject(input)) {
+      for (const [k, v] of Object.entries(input)) {
         if (v == null) continue
         if (Array.isArray(v)) {
           for (const item of v) {
@@ -99,18 +99,18 @@ export namespace FexiosHeaderBuilder {
 
     // Map / ReadonlyMap
     if (input instanceof Map) {
-      const out: Record<string, string[]> = {}
+      const output: Record<string, string[]> = {}
       for (const [key, raw] of input.entries()) {
         if (raw == null) continue
         if (Array.isArray(raw)) {
           const arr = raw.filter((v) => v != null).map((v) => String(v))
-          if (arr.length) out[key] = (out[key] ?? []).concat(arr)
+          if (arr.length) output[key] = (output[key] ?? []).concat(arr)
         } else {
           const v = String(raw)
-          out[key] = out[key] ? [...out[key], v] : [v]
+          output[key] = output[key] ? [...output[key], v] : [v]
         }
       }
-      return out
+      return output
     }
 
     // 其余类型统一在这里报错（集中化异常）
@@ -146,11 +146,6 @@ export namespace FexiosHeaderBuilder {
    * ```
    */
   export const mergeHeaders = (
-    original:
-      | Record<string, unknown>
-      | Headers
-      | Map<string, unknown>
-      | ReadonlyMap<string, unknown>,
     ...incomes: Array<
       | Record<string, unknown>
       | Headers
@@ -160,52 +155,49 @@ export namespace FexiosHeaderBuilder {
       | undefined
     >
   ): Headers => {
-    const result =
-      original instanceof Headers
-        ? new Headers(original)
-        : makeHeaders(original)
+    const output = new Headers()
 
     const mergeOneFromObject = (patch: Record<string, unknown>) => {
       for (const [k, v] of Object.entries(patch)) {
         if (v === undefined) continue
         if (v === null) {
-          result.delete(k)
+          output.delete(k)
           continue
         }
         if (Array.isArray(v)) {
-          result.delete(k)
+          output.delete(k)
           for (const item of v) {
             if (item == null) continue
-            result.append(k, String(item))
+            output.append(k, String(item))
           }
         } else {
-          result.set(k, String(v))
+          output.set(k, String(v))
         }
       }
     }
 
-    for (const income of incomes) {
-      if (income == null) continue
+    for (const input of incomes) {
+      if (input == null) continue
 
-      if (income instanceof Headers) {
-        income.forEach((value, key) => {
-          result.set(key, value)
+      if (input instanceof Headers) {
+        input.forEach((value, key) => {
+          output.set(key, value)
         })
         continue
       }
 
-      if (isPlainObject(income)) {
-        mergeOneFromObject(income as unknown as Record<string, unknown>)
+      if (isPlainObject(input)) {
+        mergeOneFromObject(input as unknown as Record<string, unknown>)
         continue
       }
 
-      const rec = toHeaderRecord(income as any)
+      const rec = toHeaderRecord(input as any)
       for (const [key, arr] of Object.entries(rec)) {
-        result.delete(key)
-        for (const v of arr) result.append(key, v)
+        output.delete(key)
+        for (const v of arr) output.append(key, v)
       }
     }
 
-    return result
+    return output
   }
 }
