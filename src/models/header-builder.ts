@@ -1,4 +1,4 @@
-import { isPlainObject } from '@/utils/isPlainObject.js'
+import { isPlainObject } from '../utils/index.js'
 
 /**
  * Static utility class for building and merging HTTP Headers

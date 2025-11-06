@@ -1,5 +1,5 @@
-import { clone } from '@/utils/clone.js'
-import { isPlainObject } from '@/utils/isPlainObject'
+import { clone } from '../utils/clone.js'
+import { isPlainObject } from '../utils/isPlainObject.js'
 
 /**
  * Static utility class for building URL search parameters

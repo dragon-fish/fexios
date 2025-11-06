@@ -1,5 +1,5 @@
-import { clone } from './clone'
-import { isPlainObject } from './isPlainObject'
+import { clone } from './clone.js'
+import { isPlainObject } from './isPlainObject.js'
 
 export function deepMerge<T = any>(
   obj: Partial<T>,

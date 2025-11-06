@@ -1,4 +1,3 @@
-import { CallableInstance } from './utils/callable-instance.js'
 import type {
   FexiosConfigs,
   FexiosContext,
@@ -13,16 +12,16 @@ import type {
   FexiosRequestShortcut,
   FexiosLifecycleEventMap,
   FexiosPlugin,
-} from './types'
-import { FexiosError, FexiosErrorCodes } from './models/errors.js'
+} from './types.js'
 import {
   createFexiosResponse,
   createFexiosWebSocketResponse,
-} from './models/response.js'
-import { FexiosQueryBuilder } from './models/query-builder.js'
-import { deepMerge } from './utils/deepMerge'
-import { isPlainObject } from './utils/isPlainObject'
-import { FexiosHeaderBuilder } from './models/header-builder'
+  FexiosError,
+  FexiosErrorCodes,
+  FexiosHeaderBuilder,
+  FexiosQueryBuilder,
+} from './models/index.js'
+import { deepMerge, isPlainObject, CallableInstance } from './utils/index.js'
 
 /**
  * Fexios

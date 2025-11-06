@@ -1,7 +1,7 @@
 import type {
   FexiosConfigs,
   IFexiosResponse as IFexiosResponse,
-} from '../types'
+} from '../types.js'
 import { FexiosError, FexiosErrorCodes, FexiosResponseError } from './errors.js'
 
 /**
