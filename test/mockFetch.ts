@@ -76,9 +76,8 @@ export const mockFetch: FetchLike = async (
   // mock WebSocket upgrade response
   if (url.pathname === '/_ws') {
     // Return a response with upgrade header
-    // Note: We can't use status 101 in Response API, so use 200 with upgrade header
-    // This will trigger fexios to create a WebSocket based on the upgrade header
-    return new Response('', {
+    // Note: We can't create a Response with status 101 using Response API
+    const res = new Response(null, {
       status: 200,
       headers: {
         upgrade: 'websocket',
@@ -86,13 +85,18 @@ export const mockFetch: FetchLike = async (
         'access-control-allow-origin': '*',
       },
     })
+    // Manually override status to 101
+    Object.defineProperty(res, 'status', { value: 101, writable: false })
+    // Manually set URL property for Response
+    Object.defineProperty(res, 'url', { value: url.href, writable: false })
+    return res
   }
 
   // mock SSE (Server-Sent Events)
   if (url.pathname === '/_sse') {
     // Return a response with text/event-stream content-type
     // This will trigger fexios to create an EventSource
-    return new Response('', {
+    const res = new Response(null, {
       status: 200,
       headers: {
         'content-type': 'text/event-stream',
@@ -101,6 +105,9 @@ export const mockFetch: FetchLike = async (
         'access-control-allow-origin': '*',
       },
     })
+    // Manually set URL property for Response
+    Object.defineProperty(res, 'url', { value: url.href, writable: false })
+    return res
   }
 
   // mock blank.png

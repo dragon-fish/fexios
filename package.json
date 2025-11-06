@@ -3,37 +3,43 @@
   "version": "4.3.1",
   "description": "Fetch based HTTP client with similar API to axios for browser and Node.js",
   "type": "module",
-  "main": "./dist/index.js",
-  "require": "./lib/index.cjs",
-  "module": "./dist/index.js",
-  "browser": "./lib/index.umd.cjs",
+  "main": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
     "lib"
   ],
+  "sideEffects": false,
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./dist/index.d.ts",
       "source": "./src/index.ts",
-      "import": "./dist/index.js",
-      "require": "./lib/index.cjs"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./models": {
+      "source": "./src/models/index.ts",
+      "types": "./dist/models/index.d.ts",
+      "import": "./dist/models/index.mjs",
+      "require": "./dist/models/index.cjs"
+    },
+    "./utils": {
+      "source": "./src/utils/index.ts",
+      "types": "./dist/utils/index.d.ts",
+      "import": "./dist/utils/index.mjs",
+      "require": "./dist/utils/index.cjs"
     },
     "./plugins": {
       "types": "./dist/plugins/index.d.ts",
-      "source": "./src/plugins/index.ts",
-      "import": "./dist/plugins/index.js"
-    },
-    "./dist/*": {
-      "source": "./dist/*",
-      "types": "./dist/*"
+      "import": "./dist/plugins/index.mjs",
+      "require": "./dist/plugins/index.cjs"
     }
   },
   "scripts": {
-    "build": "npm run clean && run-p build:*",
-    "build:import": "cross-env VITE_BUILD_FORMAT=import vite build",
-    "build:bundle": "cross-env VITE_BUILD_FORMAT=bundle vite build",
+    "build": "run-p build:*",
+    "build:import": "unbuild",
+    "build:bundle": "cross-env vite build",
     "clean": "rimraf dist lib",
     "test": "vitest run ./test ./src",
     "prepublish": "npm run build",
@@ -74,11 +80,12 @@
     "cross-env": "^10.1.0",
     "dotenv": "^17.2.3",
     "eventsource": "^4.0.0",
-    "fexios": "workspace:^",
+    "fexios": "workspace:",
     "npm-run-all2": "^8.0.4",
     "rimraf": "^6.0.1",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
+    "unbuild": "^3.6.1",
     "unplugin-dts": "1.0.0-beta.6",
     "vite": "^7.1.12",
     "vitest": "^4.0.4"

@@ -9,17 +9,11 @@
 // Export all types
 export * from './types.js'
 
-// Export errors
-export * from './models/errors.js'
-
-// Export response utilities
-export * from './models/response.js'
-
-// Export query builder
-export * from './models/query-builder.js'
+// Export models
+export * from './models/index.js'
 
 // Export utilities
-export * from './utils.js'
+export * from './utils/index.js'
 
 // Export main Fexios class
 export * from './fexios.js'

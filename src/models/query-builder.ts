@@ -1,4 +1,5 @@
-import { checkIsPlainObject } from '@/utils.js'
+import { clone } from '../utils/clone.js'
+import { isPlainObject } from '../utils/isPlainObject.js'
 
 /**
  * Static utility class for building URL search parameters
@@ -149,7 +150,7 @@ export namespace FexiosQueryBuilder {
     const mergedRecord = mergeQueries(existingParams, params || {})
     const mergedParams = makeSearchParams(mergedRecord)
     u.search = mergedParams.toString()
-    u.hash = hash || ''
+    if (typeof hash !== 'undefined') u.hash = hash
     return u
   }
 
@@ -178,18 +179,18 @@ export namespace FexiosQueryBuilder {
    * ```
    */
   export const toQueryRecord = <T = Record<string, unknown>>(
-    searchParams:
+    input:
       | string
       | URLSearchParams
       | FormData
       | Map<string, any>
       | ReadonlyMap<string, any>
   ): T => {
-    if (typeof searchParams === 'string') {
-      searchParams = fromString(searchParams)
+    if (typeof input === 'string') {
+      input = fromString(input)
     }
 
-    const out: any = {}
+    const output: any = {}
 
     const parseKey = (key: string): { path: string[]; forceArray: boolean } => {
       if (!key.includes('[')) return { path: [key], forceArray: false }
@@ -247,12 +248,12 @@ export namespace FexiosQueryBuilder {
       }
     }
 
-    for (const [rawKey, val] of searchParams.entries()) {
+    for (const [rawKey, val] of input.entries()) {
       const { path, forceArray } = parseKey(String(rawKey))
-      setDeep(out, path, val?.toString(), forceArray)
+      setDeep(output, path, val?.toString(), forceArray)
     }
 
-    return out as T
+    return output as T
   }
 
   /**
@@ -295,13 +296,6 @@ export namespace FexiosQueryBuilder {
    * mergeQueries({ a: '1' }, new URLSearchParams('b=2&c=3')) // { a: '1', b: '2', c: '3' }
    */
   export const mergeQueries = <T = any>(
-    original:
-      | Record<string, any>
-      | URLSearchParams
-      | FormData
-      | Map<string, any>
-      | ReadonlyMap<string, any>
-      | string,
     ...incomes: Array<
       | Record<string, any>
       | URLSearchParams
@@ -313,33 +307,17 @@ export namespace FexiosQueryBuilder {
       | undefined
     >
   ): T => {
-    const result: Record<string, any> = clone(toPlain(original))
+    const output: Record<string, any> = {}
 
-    for (const income of incomes) {
-      if (income == null) continue
-      mergeOne(result, toPlain(income))
+    for (const input of incomes) {
+      if (input == null) continue
+      mergeOne(output, toPlain(input))
     }
 
-    return result as T
+    return output as T
   }
 
   // internal utils
-  function clone(v: any): any {
-    if (Array.isArray(v)) return v.map(clone)
-    if (checkIsPlainObject(v)) {
-      const o: any = {}
-      for (const [k, val] of Object.entries(v)) o[k] = clone(val)
-      return o
-    }
-    if (v instanceof Map) {
-      // Normalize Map clone as a plain object to keep return type consistent
-      const o: any = {}
-      for (const [k, val] of v.entries()) o[k] = clone(val)
-      return o
-    }
-    return v
-  }
-
   function toPlain(src: any): Record<string, any> {
     if (!src) return {}
     if (
@@ -349,7 +327,7 @@ export namespace FexiosQueryBuilder {
     )
       return toQueryRecord(src)
     if (typeof src === 'string') return toQueryRecord(fromString(src))
-    if (checkIsPlainObject(src)) return src
+    if (isPlainObject(src)) return src
     throw new TypeError(
       `unsupported type transformation, got: ${Object.prototype.toString.call(
         src
@@ -365,7 +343,7 @@ export namespace FexiosQueryBuilder {
         continue
       }
       const cur = target[k]
-      if (checkIsPlainObject(cur) && checkIsPlainObject(v)) {
+      if (isPlainObject(cur) && isPlainObject(v)) {
         mergeOne(cur, v)
       } else {
         target[k] = clone(v)

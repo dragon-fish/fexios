@@ -13,6 +13,8 @@ export enum FexiosErrorCodes {
   ABORTED_BY_HOOK = 'ABORTED_BY_HOOK',
   INVALID_HOOK_CALLBACK = 'INVALID_HOOK_CALLBACK',
   UNEXPECTED_HOOK_RETURN = 'UNEXPECTED_HOOK_RETURN',
+  UNSUPPORTED_RESPONSE_TYPE = 'UNSUPPORTED_RESPONSE_TYPE',
+  BODY_TRANSFORM_ERROR = 'BODY_TRANSFORM_ERROR',
 }
 
 /**
@@ -28,8 +30,8 @@ export class FexiosError extends Error {
   ) {
     super(message, options)
   }
-  static is(e: any): e is FexiosError {
-    return e?.constructor === FexiosError
+  static is(e: any, code?: FexiosErrorCodes): e is FexiosError {
+    return e?.constructor === FexiosError && (code ? e.code === code : true)
   }
 }
 
@@ -52,7 +54,8 @@ export class FexiosResponseError<T> extends FexiosError {
 
 /**
  * Check if the error is a FexiosError that not caused by Response error
+ * @deprecated Use FexiosError.is(e) instead
  */
 export const isFexiosError = (e: any): boolean => {
-  return FexiosError.is(e) && !FexiosResponseError.is(e)
+  return FexiosError.is(e)
 }

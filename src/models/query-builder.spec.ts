@@ -272,7 +272,7 @@ describe('QueryBuilder', () => {
       )
       expect(res.d).toEqual(new Date('2021-01-01T00:00:00Z'))
       expect(String(res.r)).toBe(String(/b/))
-      expect(res.box).toBeInstanceOf(Box)
+      expect(res.box).toEqual({ v: 2 })
       expect((res.box as any).v).toBe(2)
     })
 

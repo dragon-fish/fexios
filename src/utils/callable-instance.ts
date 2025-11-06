@@ -11,7 +11,7 @@ interface CallableInstance<Args extends unknown[], Return> extends Function {
   (...args: Args): Return
 }
 
-const CallableInstance = function (this: any, property: string | symbol) {
+const CallableInstanceImpl = function (this: any, property: string | symbol) {
   const proto = this.constructor.prototype
   const func = Reflect.get(proto, property, proto) as Function
   function apply(this: unknown, ...args: unknown[]) {
@@ -24,6 +24,7 @@ const CallableInstance = function (this: any, property: string | symbol) {
   }
   return apply
 } as any
-CallableInstance.prototype = Object.create(Function.prototype)
+CallableInstanceImpl.prototype = Object.create(Function.prototype)
 
-export default CallableInstance as unknown as CallableInstanceConstructor
+export const CallableInstance =
+  CallableInstanceImpl as unknown as CallableInstanceConstructor
