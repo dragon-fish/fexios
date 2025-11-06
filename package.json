@@ -80,7 +80,7 @@
     "cross-env": "^10.1.0",
     "dotenv": "^17.2.3",
     "eventsource": "^4.0.0",
-    "fexios": "workspace:^",
+    "fexios": "workspace:",
     "npm-run-all2": "^8.0.4",
     "rimraf": "^6.0.1",
     "tsx": "^4.20.6",
