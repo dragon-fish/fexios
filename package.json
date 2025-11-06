@@ -85,6 +85,7 @@
     "rimraf": "^6.0.1",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
+    "unbuild": "^3.6.1",
     "unplugin-dts": "1.0.0-beta.6",
     "vite": "^7.1.12",
     "vitest": "^4.0.4"
