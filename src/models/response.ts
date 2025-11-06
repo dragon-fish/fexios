@@ -31,6 +31,17 @@ export class FexiosResponse<T = unknown> implements IFexiosResponse<T> {
   readonly redirected!: boolean
 }
 
+const concatUint8Arrays = (parts: Uint8Array[]) => {
+  const total = parts.reduce((n, p) => n + p.length, 0)
+  const out = new Uint8Array(total)
+  let off = 0
+  for (const p of parts) {
+    out.set(p, off)
+    off += p.length
+  }
+  return out
+}
+
 async function readBody(
   stream: ReadableStream<Uint8Array>,
   contentLength: number,
@@ -54,26 +65,15 @@ async function readBody(
       chunks.push(value)
       received += value.length
       if (onProgress && contentLength > 0)
-        onProgress(received / contentLength, concat(chunks))
+        onProgress(received / contentLength, concatUint8Arrays(chunks))
     }
   } finally {
     reader.releaseLock?.()
   }
 
-  const data = concat(chunks)
+  const data = concatUint8Arrays(chunks)
   onProgress?.(1, data)
   return data
-
-  function concat(parts: Uint8Array[]) {
-    const total = parts.reduce((n, p) => n + p.length, 0)
-    const out = new Uint8Array(total)
-    let off = 0
-    for (const p of parts) {
-      out.set(p, off)
-      off += p.length
-    }
-    return out
-  }
 }
 
 const guessFexiosResponseType = (
@@ -257,21 +257,57 @@ export async function createFexiosWebSocketResponse(
         )
       )
     }, delay)
-    ws.addEventListener('open', () => {
+
+    let settled = false
+
+    const cleanup = () => {
       clearTimeout(timer)
-      resolve()
-    })
-    ws.addEventListener('error', (event) => {
-      clearTimeout(timer)
-      reject(
-        new FexiosError(
-          FexiosErrorCodes.NETWORK_ERROR,
-          `WebSocket connection failed`,
-          undefined,
-          { cause: event }
+      ws.removeEventListener('open', onOpen)
+      ws.removeEventListener('error', onError)
+      ws.removeEventListener('close', onClose)
+    }
+
+    const onOpen = () => {
+      if (!settled) {
+        settled = true
+        cleanup()
+        resolve()
+      }
+    }
+
+    const onError = (event: Event) => {
+      if (!settled) {
+        settled = true
+        cleanup()
+        reject(
+          new FexiosError(
+            FexiosErrorCodes.NETWORK_ERROR,
+            `WebSocket connection failed`,
+            undefined,
+            { cause: event }
+          )
         )
-      )
-    })
+      }
+    }
+
+    const onClose = (event: CloseEvent) => {
+      if (!settled) {
+        settled = true
+        cleanup()
+        reject(
+          new FexiosError(
+            FexiosErrorCodes.NETWORK_ERROR,
+            `WebSocket connection closed unexpectedly (code: ${event.code}, reason: ${event.reason})`,
+            undefined,
+            { cause: event }
+          )
+        )
+      }
+    }
+
+    ws.addEventListener('open', onOpen)
+    ws.addEventListener('error', onError)
+    ws.addEventListener('close', onClose)
   })
   return new FexiosResponse<WebSocket>(response || new Response(null), ws, 'ws')
 }
@@ -282,20 +318,51 @@ export async function createFexiosEventSourceResponse(
   timeout?: number
 ) {
   const es = new EventSource(url.toString())
-  await new Promise<any>((resolve, reject) => {
-    es.addEventListener('open', () => {
-      resolve(undefined)
-    })
-    es.addEventListener('error', (event) => {
+  const delay = timeout && timeout > 0 ? timeout : 60000 // Default 60s timeout
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      es.close()
       reject(
         new FexiosError(
-          FexiosErrorCodes.NETWORK_ERROR,
-          `EventSource connection failed`,
-          undefined,
-          { cause: event }
+          FexiosErrorCodes.TIMEOUT,
+          `EventSource connection timed out after ${delay}ms`
         )
       )
-    })
+    }, delay)
+
+    let settled = false
+
+    const cleanup = () => {
+      clearTimeout(timer)
+      es.removeEventListener('open', onOpen)
+      es.removeEventListener('error', onError)
+    }
+
+    const onOpen = () => {
+      if (!settled) {
+        settled = true
+        cleanup()
+        resolve()
+      }
+    }
+
+    const onError = (event: Event) => {
+      if (!settled) {
+        settled = true
+        cleanup()
+        reject(
+          new FexiosError(
+            FexiosErrorCodes.NETWORK_ERROR,
+            `EventSource connection failed`,
+            undefined,
+            { cause: event }
+          )
+        )
+      }
+    }
+
+    es.addEventListener('open', onOpen)
+    es.addEventListener('error', onError)
   })
   return new FexiosResponse<EventSource>(
     response || new Response(null),
