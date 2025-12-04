@@ -47,7 +47,7 @@ export class Fexios extends CallableInstance<
   }
   static readonly DEFAULT_CONFIGS: FexiosConfigs = {
     baseURL: '',
-    timeout: 60 * 1000,
+    timeout: 0,
     credentials: undefined,
     headers: {},
     query: {},
@@ -98,17 +98,20 @@ export class Fexios extends CallableInstance<
     options?: Partial<FexiosRequestOptions>
   ): Promise<FexiosFinalContext<T>> {
     let ctx: FexiosContext = (options || {}) as FexiosContext
+
     if (typeof urlOrOptions === 'string' || urlOrOptions instanceof URL) {
       ctx.url = urlOrOptions.toString()
     } else if (typeof urlOrOptions === 'object') {
       ctx = urlOrOptions as FexiosContext
     }
-    ctx = await this.emit('beforeInit', ctx, {
-      shouldAdjustRequestParams: true,
-      shouldHandleShortCircuitResponse: true,
-    })
+
+    ctx = await this.emit('beforeInit', ctx)
     if ((ctx as any)[Fexios.FINAL_SYMBOL]) return ctx as any
 
+    // first normalization
+    ctx = this.normalizeContext(ctx)
+
+    // method/body check
     if (
       Fexios.METHODS_WITHOUT_BODY.includes(
         ctx.method?.toLocaleLowerCase() as FexiosMethods
@@ -121,20 +124,14 @@ export class Fexios extends CallableInstance<
       )
     }
 
-    ctx = await this.emit('beforeRequest', ctx, {
-      shouldAdjustRequestParams: true,
-      shouldHandleShortCircuitResponse: true,
-      preAdjust: true,
-      requestOptionsOverridesURLSearchParams: true,
-      preRequestOptionsOverridesURLSearchParams: true,
-      postRequestOptionsOverridesURLSearchParams: true,
-    })
+    // beforeRequest
+    ctx = await this.emit('beforeRequest', ctx)
     if ((ctx as any)[Fexios.FINAL_SYMBOL]) return ctx as any
 
+    // resolve body & auto Content-Type
     let body: string | FormData | URLSearchParams | Blob | undefined
     const headerAutoPatch: Record<string, unknown> = {}
     if (typeof ctx.body !== 'undefined' && ctx.body !== null) {
-      // Automatically transform JSON object to JSON string
       if (
         ctx.body instanceof Blob ||
         ctx.body instanceof FormData ||
@@ -151,11 +148,11 @@ export class Fexios extends CallableInstance<
       }
     }
 
-    // Adjust content-type header
+    // if user didn't explicitly give content-type, auto patch it based on body
     const optionsHeaders = FexiosHeaderBuilder.makeHeaders(ctx.headers || {})
     if (!optionsHeaders.get('content-type') && body) {
       if (body instanceof FormData || body instanceof URLSearchParams) {
-        // Let the browser automatically set content-type for FormData/URLSearchParams
+        // let browser set boundary automatically
         headerAutoPatch['content-type'] = null
       } else if (typeof body === 'string' && typeof ctx.body === 'object') {
         headerAutoPatch['content-type'] = 'application/json'
@@ -164,20 +161,17 @@ export class Fexios extends CallableInstance<
           body.type || 'application/octet-stream'
       }
     }
-
     ctx.body = body
-    ctx = await this.emit('afterBodyTransformed', ctx, {
-      shouldAdjustRequestParams: true,
-      shouldHandleShortCircuitResponse: true,
-      preAdjust: true,
-      postRequestOptionsOverridesURLSearchParams: true,
-    })
+
+    // afterBodyTransformed
+    ctx = await this.emit('afterBodyTransformed', ctx)
     if ((ctx as any)[Fexios.FINAL_SYMBOL]) return ctx as any
 
+    // build Request
     const abortController =
       (ctx.abortController as AbortController | undefined) ??
       (globalThis.AbortController ? new AbortController() : undefined)
-    // Build final URL from ctx.url (without search) and ctx.query
+
     const baseUrlStringForRequest =
       ctx.baseURL ||
       this.baseConfigs.baseURL ||
@@ -190,7 +184,7 @@ export class Fexios extends CallableInstance<
     const finalURLForRequest = FexiosQueryBuilder.makeURL(
       urlObjForRequest,
       (ctx as any as FexiosContext).query,
-      urlObjForRequest.hash
+      urlObjForRequest.hash // 保留 hash
     ).toString()
 
     const rawRequest = new Request(finalURLForRequest, {
@@ -208,13 +202,13 @@ export class Fexios extends CallableInstance<
     })
     ctx.rawRequest = rawRequest
 
-    ctx = await this.emit('beforeActualFetch', ctx, {
-      shouldHandleShortCircuitResponse: true,
-    })
+    // beforeActualFetch
+    ctx = await this.emit('beforeActualFetch', ctx)
     if ((ctx as any)[Fexios.FINAL_SYMBOL]) return ctx as any
 
-    const timeout = ctx.timeout || this.baseConfigs.timeout || 60 * 1000
+    const timeout = ctx.timeout ?? this.baseConfigs.timeout ?? 60 * 1000
 
+    // WebSocket 分支
     if (ctx.url.startsWith('ws') || ctx.responseType === 'ws') {
       const response = await createFexiosWebSocketResponse(
         ctx.url,
@@ -233,13 +227,16 @@ export class Fexios extends CallableInstance<
       >
     }
 
+    // —— fetch + 超时控制 —— //
     let timer: ReturnType<typeof setTimeout> | undefined
-
     try {
       if (abortController) {
-        timer = setTimeout(() => {
-          abortController.abort()
-        }, timeout)
+        timer =
+          timeout > 0
+            ? setTimeout(() => {
+                abortController.abort()
+              }, timeout)
+            : undefined
       }
 
       const fetch = ctx.fetch || this.baseConfigs.fetch || globalThis.fetch
@@ -265,10 +262,9 @@ export class Fexios extends CallableInstance<
           options?.onProgress?.(progress, buffer)
         }
       )
+
       Object.defineProperties(ctx, {
-        url: {
-          get: () => rawResponse?.url || finalURLForRequest,
-        },
+        url: { get: () => rawResponse?.url || finalURLForRequest },
         data: { get: () => ctx.response!.data },
         headers: { get: () => rawResponse!.headers },
         responseType: { get: () => ctx.response!.responseType },
@@ -284,69 +280,49 @@ export class Fexios extends CallableInstance<
   mergeQueries = FexiosQueryBuilder.mergeQueries
   mergeHeaders = FexiosHeaderBuilder.mergeHeaders
 
-  private normalizeContext(
-    ctx: FexiosContext,
-    opts: Partial<{ requestOptionsOverridesURLSearchParams: boolean }> = {}
-  ): FexiosContext {
+  private normalizeContext(ctx: FexiosContext): FexiosContext {
     const c = ctx as FexiosContext
 
-    // Resolve base URL once. Prefer ctx.baseURL > client baseConfigs > location > localhost
     const fallback = globalThis.location?.href || 'http://localhost'
-    const baseStr = (c.baseURL ||
-      this.baseConfigs.baseURL ||
-      fallback) as string
-    const baseURL = new URL(baseStr, fallback)
+    const defaultsBaseURL = new URL(
+      this.baseConfigs.baseURL || fallback,
+      fallback
+    )
 
-    // Resolve request URL against the base and normalize baseURL to origin
-    const reqURL = new URL(c.url.toString(), baseURL)
-    c.baseURL = baseURL.origin
+    // 解析当前请求 URL（相对 ctx.baseURL 或 defaults.baseURL）
+    const baseForResolve = new URL(
+      (c.baseURL || this.baseConfigs.baseURL || fallback) as string,
+      fallback
+    )
+    const reqURL = new URL(c.url.toString(), baseForResolve)
 
-    // Detect whether we've already normalized once for this ctx
-    const already = Boolean((c as any)[Fexios.NORMALIZED_SYMBOL])
+    // 标记首次归一化（首次引入 defaults 层）
+    const firstTime = !Boolean((c as any)[Fexios.NORMALIZED_SYMBOL])
+    if (firstTime) (c as any)[Fexios.NORMALIZED_SYMBOL] = true
 
-    let finalQuery: Record<string, any>
-    if (!already) {
-      // First normalization: include base layers and original request URL search
-      ;(c as any)[Fexios.NORMALIZED_SYMBOL] = true
-
-      if (opts.requestOptionsOverridesURLSearchParams) {
-        // ctx.query > reqURL.search > baseConfigs.query > baseURL.search
-        finalQuery = this.mergeQueries(
-          baseURL.search || '',
+    // ---- 合并 query ----
+    // 优先级：ctx.query > ctx.url.searchParams > defaults.query > defaults.baseURL.searchParams
+    const merged = firstTime
+      ? this.mergeQueries(
+          defaultsBaseURL.search || '',
           this.baseConfigs.query,
           reqURL.search,
           c.query
-        ) as any
-      } else {
-        // reqURL.search > ctx.query > baseConfigs.query > baseURL.search
-        finalQuery = this.mergeQueries(
-          baseURL.search || '',
-          this.baseConfigs.query,
-          c.query,
-          reqURL.search
-        ) as any
-      }
-    } else {
-      // Subsequent normalizations: only reconcile between current URL search and ctx.query
-      if (opts.requestOptionsOverridesURLSearchParams) {
-        // ctx.query > reqURL.search
-        finalQuery = this.mergeQueries({}, reqURL.search, c.query) as any
-      } else {
-        // reqURL.search > ctx.query
-        finalQuery = this.mergeQueries({}, c.query, reqURL.search) as any
-      }
-    }
+        )
+      : // 后续归一化：仅对齐“当前 URL search 与 ctx.query”，仍保持 ctx 优先
+        this.mergeQueries({}, reqURL.search, c.query)
 
-    ;(c as any).query = finalQuery
+    ;(c as any).query = merged as any
 
-    // Strip search from URL while preserving hash. Avoid extra alloc if possible.
-    if (reqURL.search) {
-      const urlNoSearch = new URL(reqURL)
-      urlNoSearch.search = ''
-      c.url = urlNoSearch.toString()
-    } else {
-      c.url = reqURL.toString()
-    }
+    // ---- 清理 URL：仅保留 origin + pathname + hash ----
+    // 删除 search，但保留 hash（如果存在）
+    const urlClean = new URL(reqURL)
+    urlClean.search = ''
+    c.baseURL = new URL(
+      c.baseURL || this.baseConfigs.baseURL || fallback,
+      fallback
+    ).origin
+    c.url = `${urlClean.origin}${urlClean.pathname}${urlClean.hash || ''}`
 
     return c
   }
@@ -354,59 +330,20 @@ export class Fexios extends CallableInstance<
   async emit<E extends FexiosLifecycleEvents, C = FexiosLifecycleEventMap[E]>(
     event: E,
     ctx: C,
-    _internal: Partial<{
-      /** should adjust ctx.url/ctx.query/ctx.headers after the hook */
-      shouldAdjustRequestParams: boolean
-      /** should handle the short circuit response after the hook */
-      shouldHandleShortCircuitResponse: boolean
-      /** whether to run pre-adjustment (before hooks run) */
-      preAdjust: boolean
-      /** control query merge priority without relying on event name */
-      requestOptionsOverridesURLSearchParams: boolean
-      /** pre-adjust priority override */
-      preRequestOptionsOverridesURLSearchParams: boolean
-      /** post-adjust priority override */
-      postRequestOptionsOverridesURLSearchParams: boolean
-    }> = {}
+    opts: { shouldHandleShortCircuitResponse?: boolean } = {
+      shouldHandleShortCircuitResponse: true,
+    }
   ): Promise<C> {
     const hooks = this.hooks.filter((h) => h.event === event)
-
-    if (hooks.length === 0) {
-      if (_internal?.shouldAdjustRequestParams && _internal?.preAdjust) {
-        try {
-          ctx = this.normalizeContext(ctx as unknown as FexiosContext, {
-            requestOptionsOverridesURLSearchParams:
-              _internal.preRequestOptionsOverridesURLSearchParams ??
-              _internal.requestOptionsOverridesURLSearchParams,
-          }) as unknown as C
-        } catch {}
-      }
-      return ctx
-    }
-
-    let baselinePlain: Record<string, any> | undefined
-    if (_internal?.shouldAdjustRequestParams && _internal?.preAdjust) {
-      try {
-        ctx = this.normalizeContext(ctx as unknown as FexiosContext, {
-          requestOptionsOverridesURLSearchParams:
-            _internal.preRequestOptionsOverridesURLSearchParams ??
-            _internal.requestOptionsOverridesURLSearchParams,
-        }) as unknown as C
-        baselinePlain = this.mergeQueries(
-          {},
-          (ctx as unknown as FexiosContext).query || {}
-        ) as Record<string, any>
-      } catch {}
-    }
+    if (hooks.length === 0) return ctx
 
     const shortCircuit = async (baseCtx: any, raw: Response): Promise<any> => {
       const finalCtx: any = { ...baseCtx, rawResponse: raw }
       const response = await createFexiosResponse(
         raw,
         (baseCtx as FexiosContext).responseType,
-        (progress, buffer) => {
-          ;(baseCtx as FexiosContext).onProgress?.(progress, buffer)
-        }
+        (progress, buffer) =>
+          (baseCtx as FexiosContext).onProgress?.(progress, buffer)
       )
       finalCtx.response = response
       finalCtx.data = response.data
@@ -448,7 +385,7 @@ export class Fexios extends CallableInstance<
       }
 
       if (result instanceof Response) {
-        if (_internal?.shouldHandleShortCircuitResponse !== false) {
+        if (opts.shouldHandleShortCircuitResponse !== false) {
           return shortCircuit(ctx, result)
         }
         ;(ctx as any).rawResponse = result
@@ -459,41 +396,7 @@ export class Fexios extends CallableInstance<
       ) {
         ctx = result as C
       } else {
-      }
-
-      if (_internal?.shouldAdjustRequestParams) {
-        try {
-          const postPref =
-            _internal.postRequestOptionsOverridesURLSearchParams ??
-            _internal.requestOptionsOverridesURLSearchParams
-
-          if (baselinePlain) {
-            const baseUrlString =
-              (ctx as unknown as FexiosContext).baseURL ||
-              this.baseConfigs.baseURL ||
-              globalThis.location?.href ||
-              'http://localhost'
-            const reqURL = new URL(
-              (ctx as unknown as FexiosContext).url.toString(),
-              baseUrlString
-            )
-
-            const currentQuery = (ctx as unknown as FexiosContext).query || {}
-            const merged = postPref
-              ? this.mergeQueries(baselinePlain, reqURL.search, currentQuery)
-              : this.mergeQueries(baselinePlain, currentQuery, reqURL.search)
-
-            ;(ctx as unknown as FexiosContext).query = merged as any
-
-            const urlNoSearch = new URL(reqURL)
-            urlNoSearch.search = ''
-            ;(ctx as unknown as FexiosContext).url = urlNoSearch.toString()
-          } else {
-            ctx = this.normalizeContext(ctx as unknown as FexiosContext, {
-              requestOptionsOverridesURLSearchParams: postPref,
-            }) as unknown as C
-          }
-        } catch {}
+        // no-op
       }
     }
 
