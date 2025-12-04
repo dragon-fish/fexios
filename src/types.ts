@@ -104,6 +104,11 @@ export interface FexiosRequestOptions extends Omit<FexiosConfigs, 'headers'> {
   body?: Record<string, any> | string | FormData | URLSearchParams
   abortController?: AbortController
   onProgress?: (progress: number, buffer?: Uint8Array) => void
+  /**
+   * Custom environment variables, can be any value.
+   * Useful for passing data between hooks.
+   */
+  customEnv?: any
 }
 
 export interface FexiosContext<T = any> extends FexiosRequestOptions {

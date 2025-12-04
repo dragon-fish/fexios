@@ -204,62 +204,45 @@ And common request methods aliases:
 
 ## Automatic Merge for Queries/Headers
 
-The url/query/headers parameters you pass in various places, as well as parameters modified in hook callbacks, will be automatically merged in order and according to the following rules to build the complete request URL and request headers.
+The url/query/headers parameters you pass in various places will be automatically merged to build the complete request.
 
-### Context Overwriting Rules
+### Merge Strategy
 
-- `ctx.query` could be: `Record<string, any> | URLSearchParams`
-- `ctx.headers` could be: `Record<string, string | string[] | null | undefined> | Headers`
+Fexios uses a simplified 2-stage merge strategy:
 
-Basic merging rules:
+#### 1. Apply Defaults (After `beforeInit`)
 
-1. `undefined` value means no change for that key (keep from lower layer)
-2. `null` value means remove that key (delete, regardless of lower layer)
-3. Other values: overwrite with the new value
+This happens only ONCE, immediately after the `beforeInit` hook.
 
-Details:
+- **URL**: `ctx.url` is resolved against `defaults.baseURL`.
+  - Search params from `defaults.baseURL` are merged into `ctx.url`.
+  - Priority: `ctx.url` search params > `defaults.baseURL` search params.
+- **Query**: `defaults.query` is merged into `ctx.query`.
+  - Priority: `ctx.query` > `defaults.query`.
+- **Headers**: `defaults.headers` is merged into `ctx.headers`.
+  - Priority: `ctx.headers` > `defaults.headers`.
 
-- Queries
-  - Accepts `Record<string, any>` or `URLSearchParams` (internally supports conversion from `string`/`FormData`/`Map` etc. to objects for merging).
-  - Arrays are expanded as duplicate keys; if the key name ends with `[]` (e.g., `'tags[]'`), it is forced to output with the `[]` suffix.
-  - Nested objects are expanded as `a[b][c]=...`; `undefined` preserves the lower layer value, `null` completely removes the key.
-- Headers
-  - Case-insensitive, internally processed according to `Headers` semantics.
-  - `string[]` first deletes the original value and then appends each item; `undefined` preserves, `null` deletes, normal values use set to overwrite.
-  - Automatic content type: When `content-type` is not explicitly specified, JSON object bodies are serialized and set to `application/json`; `FormData`/`URLSearchParams` let the runtime set it automatically (equivalent to setting the key to `null`).
+#### 2. Finalize Request (Before `beforeActualFetch`)
 
-See [header-builder.spec.ts](src/models/header-builder.spec.ts) and [query-builder.spec.ts](src/models/query-builder.spec.ts) for more examples.
+This happens when constructing the native `Request` object.
 
-### Merge Priority
+- **Query**: `ctx.query` is merged into the final URL's search params.
+  - Priority: `ctx.query` > URL search params (from step 1 or modified by hooks).
+- **Headers**: Final headers are built.
 
-For easier understanding, the following describes "layers" from high to low; high layers can override low layers, `undefined` means "keep the lower layer value", `null` means "remove from the final result".
+### Merge Rules
 
-- Without hooks (first normalization)
+- **undefined**: Keeps the value from the lower layer (or no change).
+- **null**: Removes the key from the result.
+- **value**: Overwrites the lower layer.
 
-  - Query: `ctx.query` (request options) > `ctx.url` (request URL's search part) > `baseConfigs.query` > `baseURL`'s search
-  - Headers: `request options.headers` > `baseConfigs.headers`
+### Note on Hooks
 
-- With hooks (normalization after hooks)
-  - Query: `ctx.query` (modified by hooks) > `ctx.url` (modified URL's search by hooks) > original request URL's search (before hooks) > `baseConfigs.query` > `baseURL`'s search
-  - Headers: `ctx.headers` (modified by hooks) > `request options.headers` > `baseConfigs.headers`
+- Modifications to `ctx.url` in hooks (e.g. `beforeRequest`) will **NOT** be parsed into `ctx.query`. They are treated as separate entities until the final merge.
+- If you replace `ctx.url` in a hook, you lose the original URL search params unless you manually preserve them.
+- To modify query parameters reliably in hooks, prefer operating on `ctx.query`.
 
-Additional rules (consistent with unit tests):
 
-- If a key is set to `undefined` in hooks, the same key will not be overwritten by the "request URL layer" and will retain the lower layer value (usually the base layer).
-- If a key is set to `null`, it will be removed from the final result regardless of whether it exists in lower layers.
-
-Example:
-
-```text
-base: keep=baseKeep
-request URL: keep=reqKeep
-hook: ctx.query.keep = undefined
-=> result keep=baseKeep (request URL ignored, base retained)
-
-base: rm=baseRemove
-hook: ctx.query.rm = null
-=> result rm removed
-```
 
 ## Hooks
 

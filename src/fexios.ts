@@ -36,7 +36,6 @@ export class Fexios extends CallableInstance<
 > {
   static readonly version = import.meta.env.__VERSION__
   private static readonly FINAL_SYMBOL = Symbol('FEXIOS_FINAL_CONTEXT')
-  private static readonly NORMALIZED_SYMBOL = Symbol('FEXIOS_NORMALIZED_QUERY')
   public baseConfigs: FexiosConfigs
   // for axios compatibility
   get defaults() {
@@ -109,7 +108,8 @@ export class Fexios extends CallableInstance<
     if ((ctx as any)[Fexios.FINAL_SYMBOL]) return ctx as any
 
     // first normalization
-    ctx = this.normalizeContext(ctx)
+    // Only apply defaults once after beforeInit
+    ctx = this.applyDefaults(ctx)
 
     // method/body check
     if (
@@ -172,15 +172,17 @@ export class Fexios extends CallableInstance<
       (ctx.abortController as AbortController | undefined) ??
       (globalThis.AbortController ? new AbortController() : undefined)
 
-    const baseUrlStringForRequest =
-      ctx.baseURL ||
-      this.baseConfigs.baseURL ||
-      globalThis.location?.href ||
-      'http://localhost'
-    const urlObjForRequest = new URL(
-      ctx.url.toString(),
-      baseUrlStringForRequest
+    // 此时 ctx.url 应该已经是完整 URL (由 applyDefaults 保证)
+    // 但如果在 hooks 中被修改为相对路径，我们需要再次尝试 resolve
+    const fallback = globalThis.location?.href || 'http://localhost'
+    // Resolve base URL to absolute
+    const baseForRequest = new URL(
+      ctx.baseURL || this.baseConfigs.baseURL || fallback,
+      fallback
     )
+    const urlObjForRequest = new URL(ctx.url, baseForRequest)
+
+    // 合并 ctx.query 到 URL searchParams (ctx.query 优先)
     const finalURLForRequest = FexiosQueryBuilder.makeURL(
       urlObjForRequest,
       (ctx as any as FexiosContext).query,
@@ -280,51 +282,79 @@ export class Fexios extends CallableInstance<
   mergeQueries = FexiosQueryBuilder.mergeQueries
   mergeHeaders = FexiosHeaderBuilder.mergeHeaders
 
-  private normalizeContext(ctx: FexiosContext): FexiosContext {
+  private applyDefaults(ctx: FexiosContext): FexiosContext {
     const c = ctx as FexiosContext
 
+    // 0. Inherit customEnv from baseConfigs
+    // Priority: ctx.customEnv > baseConfigs.customEnv
+    if ('customEnv' in this.baseConfigs) {
+      c.customEnv = deepMerge(
+        {}, // ensure we don't mutate baseConfigs
+        (this.baseConfigs as any).customEnv,
+        c.customEnv
+      )
+    }
+
     const fallback = globalThis.location?.href || 'http://localhost'
-    const defaultsBaseURL = new URL(
-      this.baseConfigs.baseURL || fallback,
-      fallback
+
+    // 1. Resolve Base URL
+    // Priority: ctx.baseURL > defaults.baseURL > fallback
+    const effectiveBase =
+      c.baseURL || this.baseConfigs.baseURL || fallback
+
+    const baseObj = new URL(effectiveBase, fallback)
+
+    // 2. Resolve Full URL & Merge Base Search Params
+    // new URL(path, base) will drop base's search params, so we need to merge them manually
+    const reqURL = new URL(c.url.toString(), baseObj)
+
+    const baseSearchParams = FexiosQueryBuilder.toQueryRecord(baseObj.searchParams)
+    const reqSearchParams = FexiosQueryBuilder.toQueryRecord(reqURL.searchParams)
+
+    // Priority: ctx.url (reqSearchParams) > base (baseSearchParams)
+    const mergedSearchParams = FexiosQueryBuilder.mergeQueries(
+      baseSearchParams,
+      reqSearchParams
     )
 
-    // 解析当前请求 URL（相对 ctx.baseURL 或 defaults.baseURL）
-    const baseForResolve = new URL(
-      (c.baseURL || this.baseConfigs.baseURL || fallback) as string,
-      fallback
+    // Write back merged search params
+    reqURL.search = FexiosQueryBuilder.makeSearchParams(mergedSearchParams).toString()
+
+    // Update ctx.url to full URL
+    // We keep ctx.baseURL for potential later usage (e.g. if hook changes url to relative)
+    c.url = reqURL.toString()
+    // delete c.baseURL
+
+    // 3. Merge ctx.query
+    // Priority: ctx.query > defaults.query
+    // Note: ctx.query is NOT merged with ctx.url search params here
+    const mergedQuery = FexiosQueryBuilder.mergeQueries(
+      this.baseConfigs.query,
+      c.query
     )
-    const reqURL = new URL(c.url.toString(), baseForResolve)
 
-    // 标记首次归一化（首次引入 defaults 层）
-    const firstTime = !Boolean((c as any)[Fexios.NORMALIZED_SYMBOL])
-    if (firstTime) (c as any)[Fexios.NORMALIZED_SYMBOL] = true
+    // Restore null values from ctx.query to ensure they can delete params from URL later
+    if (c.query) {
+      this.restoreNulls(mergedQuery, c.query)
+    }
 
-    // ---- 合并 query ----
-    // 优先级：ctx.query > ctx.url.searchParams > defaults.query > defaults.baseURL.searchParams
-    const merged = firstTime
-      ? this.mergeQueries(
-          defaultsBaseURL.search || '',
-          this.baseConfigs.query,
-          reqURL.search,
-          c.query
-        )
-      : // 后续归一化：仅对齐“当前 URL search 与 ctx.query”，仍保持 ctx 优先
-        this.mergeQueries({}, reqURL.search, c.query)
-
-    ;(c as any).query = merged as any
-
-    // ---- 清理 URL：仅保留 origin + pathname + hash ----
-    // 删除 search，但保留 hash（如果存在）
-    const urlClean = new URL(reqURL)
-    urlClean.search = ''
-    c.baseURL = new URL(
-      c.baseURL || this.baseConfigs.baseURL || fallback,
-      fallback
-    ).origin
-    c.url = `${urlClean.origin}${urlClean.pathname}${urlClean.hash || ''}`
+    ;(c as any).query = mergedQuery
 
     return c
+  }
+
+  private restoreNulls(target: any, source: any) {
+    if (!source || typeof source !== 'object') return
+    for (const [k, v] of Object.entries(source)) {
+      if (v === null) {
+        target[k] = null
+      } else if (isPlainObject(v)) {
+        if (!target[k] || typeof target[k] !== 'object') {
+          target[k] = {}
+        }
+        this.restoreNulls(target[k], v)
+      }
+    }
   }
 
   async emit<E extends FexiosLifecycleEvents, C = FexiosLifecycleEventMap[E]>(

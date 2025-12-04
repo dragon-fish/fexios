@@ -195,62 +195,44 @@ export interface IFexiosResponse<T = any> {
 
 ## 请求参数自动合并
 
-你在各处传入的 url/query/headers 参数，以及钩子回调中修改的参数，都会被按顺序、并按以下规则自动合并，最终构建出完整的请求 URL 和请求头。
+你在各处传入的 url/query/headers 参数，将会被按以下策略自动合并，以构建最终的请求。
 
-### 上下文覆写规则
+### 合并策略
 
-- `ctx.query` 可以是：`Record<string, any> | URLSearchParams`
-- `ctx.headers` 可以是：`Record<string, string | string[] | null | undefined> | Headers`
+Fexios 采用简化的两阶段合并策略：
 
-基本合并规则：
+#### 1. 应用默认配置（Apply Defaults）
 
-1. `undefined` 值表示该键无变化（保留下层值）
-2. `null` 值表示移除该键（删除，无视下层）
-3. 其他值：用新值覆盖
+此步骤仅在 `beforeInit` 钩子之后执行**一次**。
 
-详细信息：
+- **URL**: 将 `ctx.url` 基于 `defaults.baseURL` 解析为完整路径。
+  - `defaults.baseURL` 中的 search params 会合并入 `ctx.url`。
+  - 优先级：`ctx.url` search params > `defaults.baseURL` search params。
+- **Query**: `defaults.query` 合并入 `ctx.query`。
+  - 优先级：`ctx.query` > `defaults.query`。
+- **Headers**: `defaults.headers` 合并入 `ctx.headers`。
+  - 优先级：`ctx.headers` > `defaults.headers`。
 
-- 查询参数
-  - 接受 `Record<string, any>` 或 `URLSearchParams`（内部合并同时支持 `string`/`FormData`/`Map` 等转为对象后处理）。
-  - 数组会展开为重复键；若键名以 `[]` 结尾（如 `'tags[]'`），则强制以带 `[]` 的键输出。
-  - 嵌套对象会展开为 `a[b][c]=...` 的形式；`undefined` 会保留下层值，`null` 会彻底移除该键。
-- 请求头
-  - 大小写不敏感，内部统一按 `Headers` 语义处理。
-  - `string[]` 会先删除原值再逐一 append；`undefined` 保留，`null` 删除，普通值使用 set 覆盖。
-  - 自动内容类型：在未显式指定 `content-type` 时，JSON 对象体会被序列化并设置为 `application/json`；`FormData`/`URLSearchParams` 让运行时自行设置（等同于将该键置 `null`）。
+#### 2. 生成最终请求（Finalize Request）
 
-更多示例请参阅 [header-builder.spec.ts](src/models/header-builder.spec.ts) 和 [query-builder.spec.ts](src/models/query-builder.spec.ts)。
+此步骤在构建原生 `Request` 对象前（即 `beforeActualFetch` 之前）执行。
 
-### 合并优先级
+- **Query**: 将 `ctx.query` 合并入最终 URL 的 search params。
+  - 优先级：`ctx.query` > URL search params（来自第一步或被钩子修改后的 URL）。
+- **Headers**: 构建最终的 Headers 对象。
 
-为便于理解，下文把"层"从高到低描述；高层可覆盖低层，`undefined` 表示"保留低层值"，`null` 表示"从最终结果中移除"。
+### 合并规则
 
-- 无 hooks（首次归一化）
+- **undefined**: 保留低层值（即无变化）。
+- **null**: 删除该键。
+- **其他值**: 覆盖低层值。
 
-  - Query: `ctx.query`（请求选项） > `ctx.url`（请求 URL 的 search 部分） > `baseConfigs.query` > `baseURL` 的 search
-  - Headers: `request options.headers` > `baseConfigs.headers`
+### 钩子注意事项
 
-- 有 hooks（hooks 之后的归一化）
-  - Query: `ctx.query`（已被 hooks 修改） > `ctx.url`（已被 hooks 修改的 search） > 原始请求 URL 的 search（在 hooks 前） > `baseConfigs.query` > `baseURL` 的 search
-  - Headers: `ctx.headers`（已被 hooks 修改） > `request options.headers` > `baseConfigs.headers`
+- 在钩子（如 `beforeRequest`）中修改 `ctx.url` **不会**被解析回 `ctx.query`。它们在最终合并前是相互独立的实体。
+- 如果你在钩子中替换了 `ctx.url`，除非你手动保留，否则原 URL 中的 search params 将会丢失。
+- 如需在钩子中修改查询参数，建议直接操作 `ctx.query`。
 
-额外规则（与单测一致）：
-
-- 若某键在 hooks 中被设置为 `undefined`，同名键将不会再被"请求 URL 层"覆盖，最终会保留更低层（通常是 base 层）的值。
-- 若某键被设置为 `null`，则无论下层是否存在都会从最终结果中删除。
-
-示例：
-
-```text
-base: keep=baseKeep
-request URL: keep=reqKeep
-hook: ctx.query.keep = undefined
-=> 结果 keep=baseKeep （request URL 被忽略，保留 base）
-
-base: rm=baseRemove
-hook: ctx.query.rm = null
-=> 结果 rm 被移除
-```
 
 ## 钩子
 
