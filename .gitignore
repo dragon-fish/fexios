@@ -132,3 +132,6 @@ dist
 lib
 debug
 .test_reports
+
+# fuck you macOS
+.DS_Store
