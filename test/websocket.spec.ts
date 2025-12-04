@@ -1,5 +1,6 @@
-import { describe, expect, it, beforeAll, afterAll } from 'vitest'
-import fexios from '../src/index'
+import { describe, expect, it, beforeAll, afterAll, vi } from 'vitest'
+import fexios, { Fexios } from '../src/index'
+import * as ModelExports from '../src/models/index.js'
 import { MockWebSocket, MOCK_FETCH_BASE_URL, mockFetch } from './mockFetch'
 
 const WS_URL = `${MOCK_FETCH_BASE_URL}/_ws`
@@ -51,5 +52,17 @@ describe('WebSocket', () => {
     })
     expect(response).to.equal(now)
     ws.close()
+  })
+
+  it('Uses resolved timeout for WebSocket branch', async () => {
+    const spy = vi.spyOn(ModelExports, 'createFexiosWebSocketResponse')
+    const wsFexios = new Fexios({ timeout: 1234 })
+    const { data: ws } = await wsFexios.get<MockWebSocket>(
+      WS_URL.replace(/^http/, 'ws')
+    )
+    ws?.close()
+    const lastCall = spy.mock.calls[spy.mock.calls.length - 1]
+    expect(lastCall?.[2]).to.equal(1234)
+    spy.mockRestore()
   })
 })

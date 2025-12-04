@@ -46,16 +46,22 @@ describe('Fexios Core', () => {
     expect(data1.searchParams.one).to.equal('001')
 
     // requestOptions
-    const { data: data2 } = await fexios.get<EchoResponse>('/get', {
-      query: {
-        one: '111',
-      },
-    })
+    const { data: data2 } = await fexios.get<EchoResponse>(
+      '/get?one=1&another=1',
+      {
+        query: {
+          one: '111',
+        },
+      }
+    )
+    // requestOptions (111) > urlParams (1)
     expect(data2.searchParams.one).to.equal('111')
+    // urlParams only
+    expect(data2.searchParams.another).to.equal('1')
 
     // requestOptions > urlParams > baseOptions
     const { data: data3 } = await fexiosWithQueryInit.get<EchoResponse>(
-      '/get?two=222',
+      '/get?two=222&four=444',
       {
         query: {
           three: '333',
@@ -63,9 +69,10 @@ describe('Fexios Core', () => {
       }
     )
     expect(data3.searchParams).to.deep.equal({
-      one: '001',
-      two: '222',
-      three: '333',
+      one: '001', // from baseOptions
+      two: '002', // from baseOptions (overrides urlParams 222)
+      three: '333', // from requestOptions
+      four: '444', // from urlParams (unique)
     })
   })
 
@@ -155,6 +162,24 @@ describe('Fexios Core', () => {
     expect(FexiosError.is(error)).to.be.false
     expect(FexiosResponseError.is(error)).to.be.true
     expect(error?.response.data).to.equal('404')
+  })
+
+  it('Respects custom shouldThrow configs', async () => {
+    const testFexios = new Fexios({
+      shouldThrow: () => false,
+      fetch: () =>
+        Promise.resolve(
+          new Response(JSON.stringify({ code: 400 }), {
+            status: 400,
+            headers: { 'content-type': 'application/json' },
+          })
+        ),
+    })
+    const ctx = await testFexios.get<{ code: number }>(
+      `${MOCK_FETCH_BASE_URL}/custom-should-throw`
+    )
+    expect(ctx.response.status).to.equal(400)
+    expect(ctx.data.code).to.equal(400)
   })
 
   it('POST with JSON', async () => {

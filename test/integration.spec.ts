@@ -263,12 +263,13 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
 
       fx.on('beforeRequest', (ctx) => {
         // Introduce URL-level param; will be lower than ctx.query unless ctx.query uses undefined
-        ctx.url = '/path?u=urlOnly&a=hookURL'
+        // NOTE: This REPLACES the original URL, so any params in original URL (like reqKeep) are LOST
+        ctx.url = '/path?u=urlOnly&a=hookURL&keep=beforeRequest'
         // Apply undefined (no change) and null (remove) at highest layer
         ctx.query = {
           ...ctx.query,
           a: undefined, // should keep from URL (hookURL), not override
-          keep: undefined, // should keep baseKeep
+          keep: undefined, // should keep from URL (beforeRequest)
           rm: null, // should remove
           add: 'yes',
         }
@@ -284,8 +285,9 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
 
       // undefined => no change (keep value from URL layer introduced in hook)
       expect(params.a).toBe('hookURL')
-      // undefined => keep base value since request URL attempted override is lower than ctx.query undefined (no change)
-      expect(params.keep).toBe('reqKeep')
+      // undefined => keep value from hook-modified URL, since request URL was replaced
+      // Original 'reqKeep' is lost because we replaced the URL string in the hook
+      expect(params.keep).toBe('beforeRequest')
       // null => removed finally
       expect(params.rm).toBeUndefined()
       // New value from hook

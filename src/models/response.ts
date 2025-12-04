@@ -1,189 +1,387 @@
 import type {
   FexiosConfigs,
   IFexiosResponse as IFexiosResponse,
-} from '../types'
+} from '../types.js'
 import { FexiosError, FexiosErrorCodes, FexiosResponseError } from './errors.js'
-import { checkIfTextData } from '../utils'
 
 /**
  * Fexios response wrapper class
+ * @param data Transformed response body
+ * @param responseType Guessed response type
  */
-export class FexiosResponse<T = any> implements IFexiosResponse<T> {
-  public ok: boolean
-  public status: number
-  public statusText: string
-  public headers: Headers
-
+export class FexiosResponse<T = unknown> implements IFexiosResponse<T> {
   constructor(
-    public rawResponse: Response,
-    public data: T,
-    overrides?: Partial<Omit<FexiosResponse<T>, 'rawResponse' | 'data'>>
+    readonly rawResponse: IFexiosResponse['rawResponse'],
+    readonly data: T,
+    readonly responseType: IFexiosResponse['responseType']
   ) {
-    this.ok = rawResponse.ok
-    this.status = rawResponse.status
-    this.statusText = rawResponse.statusText
-    this.headers = rawResponse.headers
-    Object.entries(overrides || {}).forEach(([key, value]) => {
-      ;(this as any)[key] = value
-    })
+    ;['ok', 'status', 'statusText', 'headers', 'url', 'redirected'].forEach(
+      (key) => {
+        Reflect.defineProperty(this, key, {
+          get: () => (rawResponse as any)[key],
+        })
+      }
+    )
   }
+  readonly ok!: boolean
+  readonly status!: number
+  readonly statusText!: string
+  readonly headers!: Headers
+  readonly url!: string
+  readonly redirected!: boolean
+}
+
+const concatUint8Arrays = (parts: Uint8Array[]) => {
+  const total = parts.reduce((n, p) => n + p.length, 0)
+  const out = new Uint8Array(total)
+  let off = 0
+  for (const p of parts) {
+    out.set(p, off)
+    off += p.length
+  }
+  return out
+}
+
+async function readBody(
+  stream: ReadableStream<Uint8Array>,
+  contentLength: number,
+  onProgress?: (p: number, buf: Uint8Array) => void
+) {
+  const reader = stream.getReader()
+  if (!reader) {
+    throw new FexiosError(
+      FexiosErrorCodes.NO_BODY_READER,
+      'Failed to get ReadableStream from response body'
+    )
+  }
+
+  const chunks: Uint8Array[] = []
+  let received = 0
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      chunks.push(value)
+      received += value.length
+      if (onProgress && contentLength > 0)
+        onProgress(received / contentLength, concatUint8Arrays(chunks))
+    }
+  } finally {
+    reader.releaseLock?.()
+  }
+
+  const data = concatUint8Arrays(chunks)
+  onProgress?.(1, data)
+  return data
+}
+
+const guessFexiosResponseType = (
+  contentType: string
+): IFexiosResponse['responseType'] => {
+  if (!contentType) return undefined
+  if (contentType.includes('application/json') || contentType.endsWith('+json'))
+    return 'json'
+  if (contentType.startsWith('text/')) return 'text'
+  if (
+    contentType.includes('multipart/form-data') ||
+    contentType.includes('application/x-www-form-urlencoded')
+  )
+    return 'form'
+  if (
+    /^image\//.test(contentType) ||
+    /^video\//.test(contentType) ||
+    /^audio\//.test(contentType) ||
+    contentType.includes('application/pdf')
+  )
+    return 'blob'
+  if (
+    contentType.includes('application/octet-stream') ||
+    contentType.includes('application/zip') ||
+    contentType.includes('application/x-tar') ||
+    contentType.includes('application/x-7z-compressed') ||
+    contentType.includes('application/x-gzip')
+  )
+    return 'arrayBuffer'
+  return undefined
 }
 
 /**
  * Resolve response body based on content type and expected type
+ * @param expectedType `undefined` means auto-detect based on content-type header. And also try JSON.stringify if it's a string.
  */
-export async function resolveResponseBody<T = any>(
+export async function createFexiosResponse<T = any>(
   rawResponse: Response,
-  expectType?: FexiosConfigs['responseType'],
-  onProgress?: (progress: number, buffer?: Uint8Array) => void
+  expectedType?: FexiosConfigs['responseType'],
+  onProgress?: (progress: number, buffer?: Uint8Array) => void,
+  shouldThrow?: (response: FexiosResponse<any>) => boolean | void,
+  timeout?: number
 ): Promise<FexiosResponse<T>> {
-  if (rawResponse.bodyUsed) {
-    throw new FexiosError(
-      FexiosErrorCodes.BODY_USED,
-      'Response body has already been used or locked'
-    )
+  const contentType =
+    rawResponse.headers.get('content-type')?.toLowerCase() ?? ''
+  const lenHeader = rawResponse.headers.get('content-length')
+  const total = lenHeader ? Number(lenHeader) : 0
+
+  // Check for upgrade headers for websocket/stream
+  const upgrade = rawResponse.headers.get('upgrade')?.toLowerCase()
+  const connection = rawResponse.headers.get('connection')?.toLowerCase()
+
+  let resolvedType: IFexiosResponse['responseType'] =
+    expectedType ?? guessFexiosResponseType(contentType) ?? 'text'
+
+  // Auto-detect websocket/stream from headers if not explicitly set
+  if (!expectedType) {
+    if (upgrade === 'websocket' && connection === 'upgrade') {
+      resolvedType = 'ws'
+    } else if (contentType.includes('text/event-stream')) {
+      resolvedType = 'stream'
+    }
   }
 
-  const contentType = rawResponse.headers.get('content-type') || ''
-  const contentLength = Number(rawResponse.headers.get('content-length')) || 0
-
-  // Helper methods for content type checking
-  const isJsonContent = (contentType: string, expectType?: string) =>
-    expectType === 'json' || contentType.startsWith('application/json')
-
-  const isBinaryContent = (
-    contentType: string,
-    buffer: Uint8Array,
-    expectType?: string
-  ) =>
-    expectType === 'blob' ||
-    (contentType.startsWith('image/') &&
-      !contentType.startsWith('image/svg')) ||
-    contentType.startsWith('video/') ||
-    contentType.startsWith('audio/') ||
-    !checkIfTextData(buffer)
-
-  // Check if the response is a WebSocket
-  if (
-    (rawResponse.status === 101 ||
-      rawResponse.status === 426 ||
-      rawResponse.headers.get('upgrade')) &&
-    typeof globalThis.WebSocket !== 'undefined'
-  ) {
-    const ws = new WebSocket(rawResponse.url)
-    await new Promise<any>((resolve, reject) => {
-      ws.onopen = resolve
-      ws.onerror = reject
-    })
-    return new FexiosResponse(rawResponse, ws as T, {
-      ok: true,
-      status: 101,
-      statusText: 'Switching Protocols',
-    })
-  }
-  // Check if the response is a EventSource
-  // But only if the content-type is not 'text' or 'json'
-  else if (
-    contentType.startsWith('text/event-stream') &&
-    !['text', 'json'].includes(expectType || '') &&
-    typeof globalThis.EventSource !== 'undefined'
-  ) {
-    const es = new EventSource(rawResponse.url)
-    await new Promise<any>((resolve, reject) => {
-      es.onopen = resolve
-      es.onerror = reject
-    })
-    return new FexiosResponse(rawResponse, es as T)
-  }
-  // Check if expectType is 'stream'
-  else if (expectType === 'stream') {
-    return new FexiosResponse(
+  // special-cases that don't need body decoding
+  if (resolvedType === 'stream') {
+    const url = rawResponse.url || (rawResponse as any).url || ''
+    const response = await createFexiosEventSourceResponse(
+      url,
       rawResponse,
-      rawResponse.body as ReadableStream as T
+      timeout
     )
+    const decide = shouldThrow?.(response)
+    if (typeof decide === 'boolean' ? decide : !response.ok) {
+      throw new FexiosResponseError(response.statusText, response)
+    }
+    return response as FexiosResponse<T>
   }
-  // Check if the response is a ReadableStream
-  else {
-    const responseCopy = rawResponse.clone()
-    const reader = responseCopy.body?.getReader()
-    if (!reader) {
+  if (resolvedType === 'ws') {
+    // fetch 不产生 WebSocket；这里只返回占位，交由上层处理
+    const url = rawResponse.url || (rawResponse as any).url || ''
+    const response = await createFexiosWebSocketResponse(
+      url,
+      rawResponse,
+      timeout
+    )
+    const decide = shouldThrow?.(response)
+    if (typeof decide === 'boolean' ? decide : !response.ok) {
+      throw new FexiosResponseError(response.statusText, response)
+    }
+    return response as FexiosResponse<T>
+  }
+
+  // decode helpers
+  const charset = /\bcharset=([^;]+)/i.exec(contentType)?.[1]?.trim() || 'utf-8'
+  const decoder = new TextDecoder(charset)
+
+  let data: any
+
+  try {
+    if (resolvedType === 'form') {
+      // Resolve form data by fetch itself (no progress support)
+      data = await rawResponse.formData()
+    } else {
+      const bytes = await readBody(rawResponse.body!, total, onProgress)
+      if (resolvedType === 'arrayBuffer') {
+        data = bytes.buffer.slice(
+          bytes.byteOffset,
+          bytes.byteOffset + bytes.byteLength
+        )
+      } else if (resolvedType === 'blob') {
+        data = new Blob([bytes], {
+          type: contentType || 'application/octet-stream',
+        })
+      } else if (resolvedType === 'text') {
+        const text = decoder.decode(bytes)
+        // auto-detect: if no explicit expected type and text looks like JSON, try to parse as JSON
+        if (!expectedType) {
+          const trimmed = text.trim()
+          if (
+            (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+            (trimmed.startsWith('[') && trimmed.endsWith(']'))
+          ) {
+            try {
+              data = JSON.parse(trimmed)
+              resolvedType = 'json'
+            } catch {
+              data = text
+            }
+          } else {
+            data = text
+          }
+        } else {
+          data = text
+        }
+      } else if (resolvedType === 'json') {
+        const text = decoder.decode(bytes)
+        data = text.length ? JSON.parse(text) : null
+      } else {
+        // theoretically should not reach here, unless user provides a expectedType out of scope
+        data = bytes
+      }
+    }
+  } catch (e) {
+    // if parsing fails, try to read as plain text as last resort
+    if (!(e instanceof Error)) throw e
+    try {
+      const t = await rawResponse.text()
+      data = t
+      resolvedType = 'text'
+    } catch {
+      // if reading as plain text fails, throw the original error
       throw new FexiosError(
-        FexiosErrorCodes.NO_BODY_READER,
-        'Failed to get ReadableStream from response body'
+        FexiosErrorCodes.BODY_TRANSFORM_ERROR,
+        `Failed to transform response body to ${resolvedType}`,
+        undefined,
+        { cause: e }
       )
-    }
-    let buffer = new Uint8Array()
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      if (value) {
-        buffer = new Uint8Array([...buffer, ...value])
-        if (onProgress && contentLength > 0) {
-          const progress = Math.min(buffer.length / contentLength, 1)
-          onProgress(progress, buffer)
-        }
-      }
-    }
-
-    const res = new FexiosResponse(rawResponse, undefined as any)
-
-    if (expectType === 'arrayBuffer') {
-      res.data = buffer.buffer as T
-      return res
-    }
-
-    // If request expects JSON, try to parse it
-    if (isJsonContent(contentType, expectType)) {
-      try {
-        const jsonString = new TextDecoder().decode(buffer)
-        res.data = JSON.parse(jsonString) as T
-      } catch (e) {
-        console.warn('Failed to parse response data as JSON:', e)
-      }
-    }
-
-    // Guess the response type, maybe a Blob?
-    if (
-      typeof res.data !== 'string' &&
-      isBinaryContent(contentType, buffer, expectType)
-    ) {
-      res.data = new Blob([buffer], {
-        type: rawResponse.headers.get('content-type') || undefined,
-      }) as Blob as T
-    } else {
-      // Otherwise, try to decode the buffer as text
-      res.data = new TextDecoder().decode(buffer) as T
-    }
-
-    if (typeof res.data === 'string' && expectType !== 'text') {
-      const trimmedData = (res.data as string).trim()
-      const firstChar = trimmedData[0]
-      const lastChar = trimmedData[trimmedData.length - 1]
-      if (
-        (firstChar === '{' && lastChar === '}') ||
-        (firstChar === '[' && lastChar === ']')
-      ) {
-        try {
-          res.data = JSON.parse(res.data as string) as T
-        } catch (_) {
-          // NOOP
-        }
-      }
-    }
-
-    // Fall back to the buffer if the data is still not resolved
-    if (typeof res.data === 'undefined') {
-      res.data = buffer.length > 0 ? (buffer as any) : undefined
-    }
-
-    if (!res.ok) {
-      throw new FexiosResponseError(
-        `Request failed with status code ${rawResponse.status}`,
-        res as any
-      )
-    } else {
-      return res
     }
   }
+
+  const response = new FexiosResponse<T>(
+    rawResponse as any,
+    data as T,
+    resolvedType
+  )
+
+  const decision = shouldThrow?.(response)
+  if (typeof decision === 'boolean' ? decision : !response.ok) {
+    throw new FexiosResponseError(response.statusText, response)
+  }
+
+  return response
+}
+
+export async function createFexiosWebSocketResponse(
+  url: string | URL,
+  response?: Response,
+  timeout?: number
+) {
+  const ws = new WebSocket(url.toString())
+  const delay = timeout ?? 60000 // Default 60s timeout
+  await new Promise<void>((resolve, reject) => {
+    const timer =
+      delay > 0
+        ? setTimeout(() => {
+            ws.close()
+            reject(
+              new FexiosError(
+                FexiosErrorCodes.TIMEOUT,
+                `WebSocket connection timed out after ${delay}ms`
+              )
+            )
+          }, delay)
+        : undefined
+
+    let settled = false
+
+    const cleanup = () => {
+      clearTimeout(timer)
+      ws.removeEventListener('open', onOpen)
+      ws.removeEventListener('error', onError)
+      ws.removeEventListener('close', onClose)
+    }
+
+    const onOpen = () => {
+      if (!settled) {
+        settled = true
+        cleanup()
+        resolve()
+      }
+    }
+
+    const onError = (event: Event) => {
+      if (!settled) {
+        settled = true
+        cleanup()
+        reject(
+          new FexiosError(
+            FexiosErrorCodes.NETWORK_ERROR,
+            `WebSocket connection failed`,
+            undefined,
+            { cause: event }
+          )
+        )
+      }
+    }
+
+    const onClose = (event: CloseEvent) => {
+      if (!settled) {
+        settled = true
+        cleanup()
+        reject(
+          new FexiosError(
+            FexiosErrorCodes.NETWORK_ERROR,
+            `WebSocket connection closed unexpectedly (code: ${event.code}, reason: ${event.reason})`,
+            undefined,
+            { cause: event }
+          )
+        )
+      }
+    }
+
+    ws.addEventListener('open', onOpen)
+    ws.addEventListener('error', onError)
+    ws.addEventListener('close', onClose)
+  })
+  return new FexiosResponse<WebSocket>(response || new Response(null), ws, 'ws')
+}
+
+export async function createFexiosEventSourceResponse(
+  url: string | URL,
+  response?: Response,
+  timeout?: number
+) {
+  const es = new EventSource(url.toString())
+  const delay = timeout ?? 60000 // Default 60s timeout
+  await new Promise<void>((resolve, reject) => {
+    const timer =
+      delay > 0
+        ? setTimeout(() => {
+            es.close()
+            reject(
+              new FexiosError(
+                FexiosErrorCodes.TIMEOUT,
+                `EventSource connection timed out after ${delay}ms`
+              )
+            )
+          }, delay)
+        : undefined
+
+    let settled = false
+
+    const cleanup = () => {
+      clearTimeout(timer)
+      es.removeEventListener('open', onOpen)
+      es.removeEventListener('error', onError)
+    }
+
+    const onOpen = () => {
+      if (!settled) {
+        settled = true
+        cleanup()
+        resolve()
+      }
+    }
+
+    const onError = (event: Event) => {
+      if (!settled) {
+        settled = true
+        cleanup()
+        reject(
+          new FexiosError(
+            FexiosErrorCodes.NETWORK_ERROR,
+            `EventSource connection failed`,
+            undefined,
+            { cause: event }
+          )
+        )
+      }
+    }
+
+    es.addEventListener('open', onOpen)
+    es.addEventListener('error', onError)
+  })
+  return new FexiosResponse<EventSource>(
+    response || new Response(null),
+    es,
+    'stream'
+  )
 }
