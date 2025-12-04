@@ -164,6 +164,24 @@ describe('Fexios Core', () => {
     expect(error?.response.data).to.equal('404')
   })
 
+  it('Respects custom shouldThrow configs', async () => {
+    const testFexios = new Fexios({
+      shouldThrow: () => false,
+      fetch: () =>
+        Promise.resolve(
+          new Response(JSON.stringify({ code: 400 }), {
+            status: 400,
+            headers: { 'content-type': 'application/json' },
+          })
+        ),
+    })
+    const ctx = await testFexios.get<{ code: number }>(
+      `${MOCK_FETCH_BASE_URL}/custom-should-throw`
+    )
+    expect(ctx.response.status).to.equal(400)
+    expect(ctx.data.code).to.equal(400)
+  })
+
   it('POST with JSON', async () => {
     const { data } = await fexios.post<EchoResponse>(
       `${MOCK_FETCH_BASE_URL}/post`,

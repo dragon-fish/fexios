@@ -31,7 +31,10 @@ export class FexiosError extends Error {
     super(message, options)
   }
   static is(e: any, code?: FexiosErrorCodes): e is FexiosError {
-    return e?.constructor === FexiosError && (code ? e.code === code : true)
+    if (!(e instanceof FexiosError) || e instanceof FexiosResponseError) {
+      return false
+    }
+    return code ? e.code === code : true
   }
 }
 
@@ -48,7 +51,7 @@ export class FexiosResponseError<T> extends FexiosError {
     super(response.statusText, message, undefined, options)
   }
   static is(e: any): e is FexiosResponseError<any> {
-    return e?.constructor === FexiosResponseError
+    return e instanceof FexiosResponseError
   }
 }
 

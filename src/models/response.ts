@@ -114,7 +114,8 @@ export async function createFexiosResponse<T = any>(
   rawResponse: Response,
   expectedType?: FexiosConfigs['responseType'],
   onProgress?: (progress: number, buffer?: Uint8Array) => void,
-  shouldThrow?: (response: FexiosResponse<any>) => boolean | void
+  shouldThrow?: (response: FexiosResponse<any>) => boolean | void,
+  timeout?: number
 ): Promise<FexiosResponse<T>> {
   const contentType =
     rawResponse.headers.get('content-type')?.toLowerCase() ?? ''
@@ -140,7 +141,11 @@ export async function createFexiosResponse<T = any>(
   // special-cases that don't need body decoding
   if (resolvedType === 'stream') {
     const url = rawResponse.url || (rawResponse as any).url || ''
-    const response = await createFexiosEventSourceResponse(url, rawResponse)
+    const response = await createFexiosEventSourceResponse(
+      url,
+      rawResponse,
+      timeout
+    )
     const decide = shouldThrow?.(response)
     if (typeof decide === 'boolean' ? decide : !response.ok) {
       throw new FexiosResponseError(response.statusText, response)
@@ -150,7 +155,11 @@ export async function createFexiosResponse<T = any>(
   if (resolvedType === 'ws') {
     // fetch 不产生 WebSocket；这里只返回占位，交由上层处理
     const url = rawResponse.url || (rawResponse as any).url || ''
-    const response = await createFexiosWebSocketResponse(url, rawResponse)
+    const response = await createFexiosWebSocketResponse(
+      url,
+      rawResponse,
+      timeout
+    )
     const decide = shouldThrow?.(response)
     if (typeof decide === 'boolean' ? decide : !response.ok) {
       throw new FexiosResponseError(response.statusText, response)

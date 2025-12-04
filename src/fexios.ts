@@ -209,13 +209,15 @@ export class Fexios extends CallableInstance<
     if ((ctx as any)[Fexios.FINAL_SYMBOL]) return ctx as any
 
     const timeout = ctx.timeout ?? this.baseConfigs.timeout ?? 60 * 1000
+    const shouldThrow =
+      ctx.shouldThrow ?? this.baseConfigs.shouldThrow
 
     // WebSocket 分支
     if (ctx.url.startsWith('ws') || ctx.responseType === 'ws') {
       const response = await createFexiosWebSocketResponse(
         ctx.url,
         undefined,
-        ctx.timeout
+        timeout
       )
       const finalCtx = {
         ...ctx,
@@ -262,7 +264,9 @@ export class Fexios extends CallableInstance<
         ctx.responseType,
         (progress, buffer) => {
           options?.onProgress?.(progress, buffer)
-        }
+        },
+        shouldThrow,
+        timeout
       )
 
       Object.defineProperties(ctx, {
@@ -373,7 +377,11 @@ export class Fexios extends CallableInstance<
         raw,
         (baseCtx as FexiosContext).responseType,
         (progress, buffer) =>
-          (baseCtx as FexiosContext).onProgress?.(progress, buffer)
+          (baseCtx as FexiosContext).onProgress?.(progress, buffer),
+        (baseCtx as FexiosContext).shouldThrow ?? this.baseConfigs.shouldThrow,
+        (baseCtx as FexiosContext).timeout ??
+          this.baseConfigs.timeout ??
+          60 * 1000
       )
       finalCtx.response = response
       finalCtx.data = response.data
