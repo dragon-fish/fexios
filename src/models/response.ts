@@ -246,17 +246,20 @@ export async function createFexiosWebSocketResponse(
   timeout?: number
 ) {
   const ws = new WebSocket(url.toString())
-  const delay = timeout && timeout > 0 ? timeout : 60000 // Default 60s timeout
+  const delay = timeout ?? 60000 // Default 60s timeout
   await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      ws.close()
-      reject(
-        new FexiosError(
-          FexiosErrorCodes.TIMEOUT,
-          `WebSocket connection timed out after ${delay}ms`
-        )
-      )
-    }, delay)
+    const timer =
+      delay > 0
+        ? setTimeout(() => {
+            ws.close()
+            reject(
+              new FexiosError(
+                FexiosErrorCodes.TIMEOUT,
+                `WebSocket connection timed out after ${delay}ms`
+              )
+            )
+          }, delay)
+        : undefined
 
     let settled = false
 
@@ -318,17 +321,20 @@ export async function createFexiosEventSourceResponse(
   timeout?: number
 ) {
   const es = new EventSource(url.toString())
-  const delay = timeout && timeout > 0 ? timeout : 60000 // Default 60s timeout
+  const delay = timeout ?? 60000 // Default 60s timeout
   await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      es.close()
-      reject(
-        new FexiosError(
-          FexiosErrorCodes.TIMEOUT,
-          `EventSource connection timed out after ${delay}ms`
-        )
-      )
-    }, delay)
+    const timer =
+      delay > 0
+        ? setTimeout(() => {
+            es.close()
+            reject(
+              new FexiosError(
+                FexiosErrorCodes.TIMEOUT,
+                `EventSource connection timed out after ${delay}ms`
+              )
+            )
+          }, delay)
+        : undefined
 
     let settled = false
 
