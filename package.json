@@ -4,7 +4,7 @@
   "description": "Fetch based HTTP client with similar API to axios for browser and Node.js",
   "type": "module",
   "main": "./dist/index.mjs",
-  "types": "./dist/index.d.ts",
+  "types": "./dist/index.d.mts",
   "files": [
     "dist",
     "lib"
@@ -13,25 +13,22 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "source": "./src/index.ts",
-      "types": "./dist/index.d.ts",
+      "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
     "./models": {
-      "source": "./src/models/index.ts",
-      "types": "./dist/models/index.d.ts",
+      "types": "./dist/models/index.d.mts",
       "import": "./dist/models/index.mjs",
       "require": "./dist/models/index.cjs"
     },
     "./utils": {
-      "source": "./src/utils/index.ts",
-      "types": "./dist/utils/index.d.ts",
+      "types": "./dist/utils/index.d.mts",
       "import": "./dist/utils/index.mjs",
       "require": "./dist/utils/index.cjs"
     },
     "./plugins": {
-      "types": "./dist/plugins/index.d.ts",
+      "types": "./dist/plugins/index.d.mts",
       "import": "./dist/plugins/index.mjs",
       "require": "./dist/plugins/index.cjs"
     }
