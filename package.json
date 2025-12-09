@@ -9,26 +9,33 @@
     "dist",
     "lib"
   ],
-  "sideEffects": false,
+  "sideEffects": [
+    "./dist/index.cjs",
+    "./dist/index.mjs"
+  ],
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
+    "./core": {
+      "import": "./dist/fexios.mjs",
+      "require": "./dist/fexios.cjs"
+    },
+    "./types": {
+      "import": "./dist/types.mjs",
+      "require": "./dist/types.cjs"
+    },
     "./models": {
-      "types": "./dist/models/index.d.mts",
       "import": "./dist/models/index.mjs",
       "require": "./dist/models/index.cjs"
     },
     "./utils": {
-      "types": "./dist/utils/index.d.mts",
       "import": "./dist/utils/index.mjs",
       "require": "./dist/utils/index.cjs"
     },
     "./plugins": {
-      "types": "./dist/plugins/index.d.mts",
       "import": "./dist/plugins/index.mjs",
       "require": "./dist/plugins/index.cjs"
     }
