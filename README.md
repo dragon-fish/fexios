@@ -39,9 +39,8 @@ yarn add fexios
 Then import the library and enjoy:
 
 ```ts
-import fexios, { createFexios, Fexios } from 'fexios'
-
 // Using directly
+import fexios from 'fexios'
 fexios.get('https://zh.moegirl.org.cn/api.php')
 // Yes, it's callable! Just like axios
 fexios({
@@ -53,15 +52,21 @@ fexios('https://zh.moegirl.org.cn/api.php', {
   body: { foo: 'bar' },
 })
 
-// With options
+// Customize instance
+import { createFexios, Fexios } from 'fexios'
 const fexios = createFexios(/* options */)
 const fexios = new Fexios(/* options */)
 const fexios = Fexios.create(/* options */)
+// Custom instance is also callable
+fexios('https://zh.moegirl.org.cn/api.php', {
+  method: 'POST',
+  body: { foo: 'bar' },
+})
 ```
 
 **Use directly in the browser**
 
-- JS Module
+- ES Module
 
 ```ts
 import('https://unpkg.com/fexios?module').then(({ createFexios }) => {
@@ -69,17 +74,18 @@ import('https://unpkg.com/fexios?module').then(({ createFexios }) => {
 })
 ```
 
-- Global variables
+- UMD bundle
 
 ```html
-<script src="https://unpkg.com/fexios"></script>
+<script src="https://unpkg.com/fexios/lib/index.js"></script>
 
 <script>
   // Using directly
+  const { fexios } = window.Fexios
   fexios.get('https://zh.moegirl.org.cn/api.php')
 
   // With options
-  const { createFexios } = Fexios
+  const { createFexios } = window.Fexios
   const fexios = createFexios(/* options */)
 </script>
 ```
@@ -241,8 +247,6 @@ This happens when constructing the native `Request` object.
 - Modifications to `ctx.url` in hooks (e.g. `beforeRequest`) will **NOT** be parsed into `ctx.query`. They are treated as separate entities until the final merge.
 - If you replace `ctx.url` in a hook, you lose the original URL search params unless you manually preserve them.
 - To modify query parameters reliably in hooks, prefer operating on `ctx.query`.
-
-
 
 ## Hooks
 

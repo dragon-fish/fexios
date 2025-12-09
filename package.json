@@ -9,10 +9,7 @@
     "dist",
     "lib"
   ],
-  "sideEffects": [
-    "./dist/index.cjs",
-    "./dist/index.mjs"
-  ],
+  "sideEffects": false,
   "exports": {
     "./package.json": "./package.json",
     ".": {

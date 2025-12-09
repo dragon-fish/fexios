@@ -23,16 +23,3 @@ import { Fexios } from './fexios.js'
 export const createFexios = Fexios.create
 export const fexios = createFexios()
 export default fexios
-
-// Set global fexios instance for browser
-declare global {
-  interface Window {
-    fexios: Fexios
-  }
-}
-/* v8 ignore else -- @preserve */
-if (typeof globalThis !== 'undefined') {
-  ;(globalThis as any).fexios = fexios
-} else if (typeof window !== 'undefined') {
-  window.fexios = fexios
-}
