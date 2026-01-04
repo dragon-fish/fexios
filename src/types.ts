@@ -128,9 +128,30 @@ export type FexiosFinalContext<T = any> = Omit<
   | 'responseType'
   | 'url'
   | 'query'
+  | 'data'
 > & {
   /** Response Headers */
   readonly headers: Headers
+  /**
+   * Resolved response body
+   * @note
+   * This is a read-only property,
+   * if you want to completely replace the ctx.data,
+   * you should return Response in `afterResponse` hook.
+   * @example
+   * ```
+   * // DO THIS √
+   * fx.on('afterResponse', (ctx) => {
+   *   return Response.json({ newData: 'new data' }, { status: 200 })
+   * })
+   * // DON'T DO THIS ×
+   * fx.on('afterResponse', (ctx) => {
+   *   ctx.data = { newData: 'new data' } // error!
+   *   return ctx
+   * })
+   * ```
+   */
+  readonly data: T
   /**
    * Response type of data
    * If not set in request options, it will be guessed based on content-type header.
