@@ -102,12 +102,12 @@ async function waitForSseOpen(es: EventSource, delay: number) {
 
 export const pluginSSE: FexiosPlugin = {
   name: 'fexios-plugin-sse',
-  install(app) {
-    app.sse = async (url, options) => {
-      const delay = options?.timeout ?? app.baseConfigs.timeout ?? 60_000
+  install(fx) {
+    fx.sse = async (url, options) => {
+      const delay = options?.timeout ?? fx.baseConfigs.timeout ?? 60_000
       const sseUrl = normalizeSseURL(
         url,
-        app.baseConfigs.baseURL || 'http://localhost',
+        fx.baseConfigs.baseURL || 'http://localhost',
         options?.query
       )
 
@@ -116,7 +116,7 @@ export const pluginSSE: FexiosPlugin = {
         timeout: delay,
       }
 
-      const ctx = (await (app as any).emit(
+      const ctx = (await (fx as any).emit(
         'sse:beforeConnect',
         baseCtx
       )) as FexiosSSEContext
@@ -125,19 +125,22 @@ export const pluginSSE: FexiosPlugin = {
       ctx.eventSource = es
 
       es.addEventListener('open', (event) => {
-        ;(app as any).emit('sse:open', { ...ctx, event })
+        ;(fx as any).emit('sse:open', { ...ctx, event })
       })
       es.addEventListener('message', (event) => {
-        ;(app as any).emit('sse:message', { ...ctx, event: event as any })
+        ;(fx as any).emit('sse:message', { ...ctx, event: event as any })
       })
       es.addEventListener('error', (event) => {
-        ;(app as any).emit('sse:error', { ...ctx, event })
+        ;(fx as any).emit('sse:error', { ...ctx, event })
       })
 
       await waitForSseOpen(es, ctx.timeout)
       return es
     }
 
-    return app
+    return fx
+  },
+  uninstall(fx) {
+    fx.sse = undefined as any
   },
 }

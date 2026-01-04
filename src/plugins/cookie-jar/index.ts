@@ -11,13 +11,22 @@ declare module '@/index.js' {
 
 export const pluginCookieJar: FexiosPlugin = {
   name: 'fexios-plugin-cookie-jar',
-  install(app) {
+  install(fx) {
     const cookieJar = new CookieJar()
 
+    // Expose cookieJar instance on app for external access
+    fx.cookieJar = cookieJar
+
     // Request interceptor: add cookies to request headers
-    app.interceptors.request.use((ctx) => {
+    fx.interceptors.request.use((ctx) => {
+      if (!fx.cookieJar) {
+        return
+      }
       const url = new URL(ctx.url!)
-      const cookieHeader = cookieJar.getCookieHeader(url.hostname, url.pathname)
+      const cookieHeader = fx.cookieJar.getCookieHeader(
+        url.hostname,
+        url.pathname
+      )
 
       if (cookieHeader) {
         ctx.headers = {
@@ -30,7 +39,10 @@ export const pluginCookieJar: FexiosPlugin = {
     })
 
     // Response interceptor: parse Set-Cookie header
-    app.interceptors.response.use((ctx) => {
+    fx.interceptors.response.use((ctx) => {
+      if (!fx.cookieJar) {
+        return
+      }
       const url = new URL(ctx.url!)
       const headersAny = ctx.rawResponse?.headers as any
       const host = url.hostname
@@ -46,22 +58,20 @@ export const pluginCookieJar: FexiosPlugin = {
         const list: string[] = getSetCookie()
         if (Array.isArray(list) && list.length > 0) {
           for (const sc of list) {
-            cookieJar.parseSetCookieHeader(sc, host, reqPath)
+            fx.cookieJar.parseSetCookieHeader(sc, host, reqPath)
           }
         }
       } else {
         const setCookieHeader = ctx.rawResponse?.headers?.get('set-cookie')
         if (setCookieHeader) {
-          cookieJar.parseSetCookieHeader(setCookieHeader, host, reqPath)
+          fx.cookieJar.parseSetCookieHeader(setCookieHeader, host, reqPath)
         }
       }
 
       return ctx
     })
-
-    // Expose cookieJar instance on app for external access
-    app.cookieJar = cookieJar
-
-    return app
+  },
+  uninstall(fx) {
+    fx.cookieJar = undefined
   },
 }

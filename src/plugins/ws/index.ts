@@ -127,12 +127,12 @@ async function waitForWsOpen(ws: WebSocket, delay: number) {
 
 export const pluginWebSocket: FexiosPlugin = {
   name: 'fexios-plugin-websocket',
-  install(app) {
-    app.ws = async (url, options) => {
-      const delay = options?.timeout ?? app.baseConfigs.timeout ?? 60_000
+  install(fx) {
+    fx.ws = async (url, options) => {
+      const delay = options?.timeout ?? fx.baseConfigs.timeout ?? 60_000
       const wsUrl = normalizeWsURL(
         url,
-        app.baseConfigs.baseURL || 'http://localhost',
+        fx.baseConfigs.baseURL || 'http://localhost',
         options?.query
       )
 
@@ -143,7 +143,7 @@ export const pluginWebSocket: FexiosPlugin = {
       }
 
       // allow user-side adjustments
-      const ctx = (await (app as any).emit(
+      const ctx = (await (fx as any).emit(
         'websocket:beforeConnect',
         baseCtx
       )) as FexiosWebSocketContext
@@ -152,22 +152,25 @@ export const pluginWebSocket: FexiosPlugin = {
       ctx.socket = ws
 
       ws.addEventListener('open', () => {
-        ;(app as any).emit('websocket:open', { ...ctx })
+        ;(fx as any).emit('websocket:open', { ...ctx })
       })
       ws.addEventListener('message', (event) => {
-        ;(app as any).emit('websocket:message', { ...ctx, event })
+        ;(fx as any).emit('websocket:message', { ...ctx, event })
       })
       ws.addEventListener('error', (event) => {
-        ;(app as any).emit('websocket:error', { ...ctx, event })
+        ;(fx as any).emit('websocket:error', { ...ctx, event })
       })
       ws.addEventListener('close', (event) => {
-        ;(app as any).emit('websocket:close', { ...ctx, event })
+        ;(fx as any).emit('websocket:close', { ...ctx, event })
       })
 
       await waitForWsOpen(ws, ctx.timeout)
       return ws
     }
 
-    return app
+    return fx
+  },
+  uninstall(fx) {
+    fx.ws = undefined as any
   },
 }

@@ -208,8 +208,7 @@ export class Fexios extends CallableInstance<
     if ((ctx as any)[Fexios.FINAL_SYMBOL]) return ctx as any
 
     const timeout = ctx.timeout ?? this.baseConfigs.timeout ?? 60 * 1000
-    const shouldThrow =
-      ctx.shouldThrow ?? this.baseConfigs.shouldThrow
+    const shouldThrow = ctx.shouldThrow ?? this.baseConfigs.shouldThrow
 
     // WebSocket / SSE are moved to plugins in the next major version.
     // Keep a helpful runtime error for legacy usage.
@@ -300,8 +299,7 @@ export class Fexios extends CallableInstance<
 
     // 1. Resolve Base URL
     // Priority: ctx.baseURL > defaults.baseURL > fallback
-    const effectiveBase =
-      c.baseURL || this.baseConfigs.baseURL || fallback
+    const effectiveBase = c.baseURL || this.baseConfigs.baseURL || fallback
 
     const baseObj = new URL(effectiveBase, fallback)
 
@@ -309,8 +307,12 @@ export class Fexios extends CallableInstance<
     // new URL(path, base) will drop base's search params, so we need to merge them manually
     const reqURL = new URL(c.url.toString(), baseObj)
 
-    const baseSearchParams = FexiosQueryBuilder.toQueryRecord(baseObj.searchParams)
-    const reqSearchParams = FexiosQueryBuilder.toQueryRecord(reqURL.searchParams)
+    const baseSearchParams = FexiosQueryBuilder.toQueryRecord(
+      baseObj.searchParams
+    )
+    const reqSearchParams = FexiosQueryBuilder.toQueryRecord(
+      reqURL.searchParams
+    )
 
     // Priority: ctx.url (reqSearchParams) > base (baseSearchParams)
     const mergedSearchParams = FexiosQueryBuilder.mergeQueries(
@@ -319,7 +321,8 @@ export class Fexios extends CallableInstance<
     )
 
     // Write back merged search params
-    reqURL.search = FexiosQueryBuilder.makeSearchParams(mergedSearchParams).toString()
+    reqURL.search =
+      FexiosQueryBuilder.makeSearchParams(mergedSearchParams).toString()
 
     // Update ctx.url to full URL
     // We keep ctx.baseURL for potential later usage (e.g. if hook changes url to relative)
@@ -555,7 +558,18 @@ export class Fexios extends CallableInstance<
         return fx
       }
     }
-    return this
+    return () => {
+      this.uninstall(plugin)
+    }
+  }
+  uninstall(plugin: FexiosPlugin | string) {
+    if (typeof plugin === 'string') {
+      plugin = this._plugins.get(plugin)!
+    }
+    if (plugin) {
+      plugin?.uninstall?.(this)
+      this._plugins.delete(plugin.name)
+    }
   }
 
   // 版本弃子们.jpg
