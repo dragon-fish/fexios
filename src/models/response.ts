@@ -118,10 +118,12 @@ export async function createFexiosResponse<T = any>(
   timeout?: number
 ): Promise<FexiosResponse<T>> {
   /**
-   * Clone the raw response to avoid mutating the original response.
-   * This is important to ensure that the original response is not mutated by the response body reading process.
+   * IMPORTANT:
+   * - We want to expose the original `rawResponse` to user as an unread Response.
+   * - But Fexios still needs to decode body to produce `data`.
+   * So we read from a clone and keep the original response unconsumed.
    */
-  const clonedRawResponse = rawResponse.clone()
+  const decodeResponse = rawResponse.clone()
   const contentType =
     rawResponse.headers.get('content-type')?.toLowerCase() ?? ''
   const lenHeader = rawResponse.headers.get('content-length')
@@ -167,9 +169,9 @@ export async function createFexiosResponse<T = any>(
   try {
     if (resolvedType === 'form') {
       // Resolve form data by fetch itself (no progress support)
-      data = await rawResponse.formData()
+      data = await decodeResponse.formData()
     } else {
-      const bytes = await readBody(rawResponse.body!, total, onProgress)
+      const bytes = await readBody(decodeResponse.body!, total, onProgress)
       if (resolvedType === 'arrayBuffer') {
         data = bytes.buffer.slice(
           bytes.byteOffset,
@@ -212,7 +214,7 @@ export async function createFexiosResponse<T = any>(
     // if parsing fails, try to read as plain text as last resort
     if (!(e instanceof Error)) throw e
     try {
-      const t = await rawResponse.text()
+      const t = await decodeResponse.text()
       data = t
       resolvedType = 'text'
     } catch {
@@ -227,7 +229,7 @@ export async function createFexiosResponse<T = any>(
   }
 
   const response = new FexiosResponse<T>(
-    clonedRawResponse as any,
+    rawResponse as any,
     data as T,
     resolvedType
   )

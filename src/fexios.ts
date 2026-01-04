@@ -264,11 +264,13 @@ export class Fexios extends CallableInstance<
         shouldThrow,
         timeout
       )
+      // Ensure ctx.rawResponse always points to ctx.response.rawResponse (the unread original Response).
+      ctx.rawResponse = ctx.response.rawResponse
 
       Object.defineProperties(ctx, {
-        url: { get: () => rawResponse?.url || finalURLForRequest },
+        url: { get: () => ctx.rawResponse?.url || finalURLForRequest },
         data: { get: () => ctx.response!.data },
-        headers: { get: () => rawResponse!.headers },
+        headers: { get: () => ctx.rawResponse!.headers },
         responseType: { get: () => ctx.response!.responseType },
       })
 
@@ -384,6 +386,9 @@ export class Fexios extends CallableInstance<
           60 * 1000
       )
       finalCtx.response = response
+      // Keep the same invariant as normal request:
+      // ctx.rawResponse === ctx.response.rawResponse (unread original Response).
+      finalCtx.rawResponse = response.rawResponse
       finalCtx.data = response.data
       finalCtx.headers = response.headers
 
