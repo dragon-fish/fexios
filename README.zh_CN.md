@@ -332,30 +332,14 @@ fexios.interceptors.response.use((ctx) => {})
 
 ## 插件
 
-```ts
-import { Fexios, type FexiosPlugin } from 'fexios'
-
-const authPlugin: FexiosPlugin = {
-  name: 'auth-plugin',
-  install(fx) {
-    fx.on('beforeRequest', (ctx) => {
-      ctx.headers = { ...ctx.headers, Authorization: 'Bearer token' }
-      return ctx
-    })
-  },
-}
-
-const fx = new Fexios()
-await fx.plugin(authPlugin)
-```
-
-### 官方插件文档（暂仅英文）
-
 插件文档主目录：[`docs/plugins/README.md`](docs/plugins/README.md)
+
+官方插件：
 
 - Cookie Jar：[`docs/plugins/cookie-jar.md`](docs/plugins/cookie-jar.md)
 - SSE (EventSource)：[`docs/plugins/sse.md`](docs/plugins/sse.md)
 - WebSocket：[`docs/plugins/websocket.md`](docs/plugins/websocket.md)
+- ……也许会有更多？
 
 ---
 

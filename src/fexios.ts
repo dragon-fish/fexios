@@ -573,9 +573,6 @@ export class Fexios extends CallableInstance<
   }
 
   // 版本弃子们.jpg
-  /** @deprecated Use `import { checkIsPlainObject } from 'fexios/utils'` instead */
-  readonly checkIsPlainObject = isPlainObject
-
   /** @deprecated Use `mergeQueries` instead */
   readonly mergeQuery = this.mergeQueries
 }

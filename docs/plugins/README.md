@@ -7,7 +7,8 @@ This directory contains documentation for **official Fexios plugins**.
 All official plugins are exported from:
 
 ```ts
-import { pluginCookieJar, pluginSSE, pluginWebSocket } from 'fexios/plugins'
+import { pluginXXX } from 'fexios/plugins'
+//       ↑↑↑↑↑↑↑↑↑ Replace with the real plugin you want to use
 ```
 
 ## Official plugins

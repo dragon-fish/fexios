@@ -1,5 +1,9 @@
 # Cookie Jar Plugin
 
+> [!IMPORTANT]
+>
+> This plugin is only available in **Node.js** environment.
+
 The Cookie Jar plugin adds **automatic cookie persistence** for Fexios requests:
 
 - It appends a `Cookie` header for outgoing requests (based on request URL).

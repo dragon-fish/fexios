@@ -347,30 +347,14 @@ fexios.interceptors.response.use((ctx) => {})
 
 ## Plugin
 
-```ts
-import { Fexios, type FexiosPlugin } from 'fexios'
-
-const authPlugin: FexiosPlugin = {
-  name: 'auth-plugin',
-  install(fx) {
-    fx.on('beforeRequest', (ctx) => {
-      ctx.headers = { ...ctx.headers, Authorization: 'Bearer token' }
-      return ctx
-    })
-  },
-}
-
-const fx = new Fexios()
-await fx.plugin(authPlugin)
-```
-
-### Official plugins
-
 See the plugin docs index: [`docs/plugins/README.md`](docs/plugins/README.md)
+
+Official plugins:
 
 - Cookie Jar: [`docs/plugins/cookie-jar.md`](docs/plugins/cookie-jar.md)
 - SSE (EventSource): [`docs/plugins/sse.md`](docs/plugins/sse.md)
 - WebSocket: [`docs/plugins/websocket.md`](docs/plugins/websocket.md)
+- ...and maybe more?
 
 ---
 
