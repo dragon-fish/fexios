@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { Fexios } from '../src/index'
 
 describe('Fexios Response - rawResponse unread (cloned)', () => {
-  it('JSON: ctx.response.rawResponse should remain unread for user-side handling', async () => {
+  it('JSON: ctx.rawResponse should remain unread and equal ctx.response.rawResponse', async () => {
     const fx = new Fexios({
       fetch: async () => {
         return new Response(JSON.stringify({ ok: true, n: 1 }), {
@@ -18,19 +18,19 @@ describe('Fexios Response - rawResponse unread (cloned)', () => {
     expect(ctx.data).to.deep.equal({ ok: true, n: 1 })
     expect(ctx.response.responseType).to.equal('json')
 
-    // original raw response in ctx is consumed by library
-    expect(ctx.rawResponse.bodyUsed).to.equal(true)
-
-    // but the rawResponse returned to user is a clone and should be unread
+    // raw response exposed to user should remain unread
+    expect(ctx.rawResponse.bodyUsed).to.equal(false)
     expect(ctx.response.rawResponse.bodyUsed).to.equal(false)
+    expect(ctx.rawResponse).to.equal(ctx.response.rawResponse)
 
     // user can still read it (once)
-    const userJson = await ctx.response.rawResponse.json()
+    const userJson = await ctx.rawResponse.json()
     expect(userJson).to.deep.equal({ ok: true, n: 1 })
+    expect(ctx.rawResponse.bodyUsed).to.equal(true)
     expect(ctx.response.rawResponse.bodyUsed).to.equal(true)
   })
 
-  it('Text: ctx.response.rawResponse should remain unread for user-side handling', async () => {
+  it('Text: ctx.rawResponse should remain unread and equal ctx.response.rawResponse', async () => {
     const fx = new Fexios({
       fetch: async () => {
         return new Response('hello', {
@@ -45,12 +45,13 @@ describe('Fexios Response - rawResponse unread (cloned)', () => {
     expect(ctx.data).to.equal('hello')
     expect(ctx.response.responseType).to.equal('text')
 
-    expect(ctx.rawResponse.bodyUsed).to.equal(true)
+    expect(ctx.rawResponse.bodyUsed).to.equal(false)
     expect(ctx.response.rawResponse.bodyUsed).to.equal(false)
+    expect(ctx.rawResponse).to.equal(ctx.response.rawResponse)
 
-    const userText = await ctx.response.rawResponse.text()
+    const userText = await ctx.rawResponse.text()
     expect(userText).to.equal('hello')
+    expect(ctx.rawResponse.bodyUsed).to.equal(true)
     expect(ctx.response.rawResponse.bodyUsed).to.equal(true)
   })
 })
-
