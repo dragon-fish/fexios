@@ -117,6 +117,11 @@ export async function createFexiosResponse<T = any>(
   shouldThrow?: (response: FexiosResponse<any>) => boolean | void,
   timeout?: number
 ): Promise<FexiosResponse<T>> {
+  /**
+   * Clone the raw response to avoid mutating the original response.
+   * This is important to ensure that the original response is not mutated by the response body reading process.
+   */
+  const clonedRawResponse = rawResponse.clone()
   const contentType =
     rawResponse.headers.get('content-type')?.toLowerCase() ?? ''
   const lenHeader = rawResponse.headers.get('content-length')
@@ -143,7 +148,7 @@ export async function createFexiosResponse<T = any>(
     const url = rawResponse.url || (rawResponse as any).url || ''
     const response = await createFexiosEventSourceResponse(
       url,
-      rawResponse,
+      clonedRawResponse,
       timeout
     )
     const decide = shouldThrow?.(response)
@@ -157,7 +162,7 @@ export async function createFexiosResponse<T = any>(
     const url = rawResponse.url || (rawResponse as any).url || ''
     const response = await createFexiosWebSocketResponse(
       url,
-      rawResponse,
+      clonedRawResponse,
       timeout
     )
     const decide = shouldThrow?.(response)
@@ -236,7 +241,7 @@ export async function createFexiosResponse<T = any>(
   }
 
   const response = new FexiosResponse<T>(
-    rawResponse as any,
+    clonedRawResponse as any,
     data as T,
     resolvedType
   )
