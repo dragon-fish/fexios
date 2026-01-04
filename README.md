@@ -21,7 +21,7 @@ Fetch based HTTP client with similar API to axios for browser and Node.js
 - [x] 😏 Automatic transforms for JSON data
 - [x] 🤩 Instances with custom defaults
 - [x] 🫡 Instance extendable
-- [x] 😍 Fricking tiny size: `17.64 kB │ gzip: 6.18 kB`
+- [x] 😍 Fricking tiny size: ~6kb (gzipped)
 
 ## Installation
 
@@ -348,18 +348,29 @@ fexios.interceptors.response.use((ctx) => {})
 ## Plugin
 
 ```ts
-import type { FexiosPlugin } from 'fexios'
+import { Fexios, type FexiosPlugin } from 'fexios'
 
-const authPlugin: FexiosPlugin = (app) => {
-  app.on('beforeRequest', (ctx) => {
-    ctx.headers = { ...ctx.headers, Authorization: 'Bearer token' }
-    return ctx
-  })
-  return app // You can return app, or omit the return value
+const authPlugin: FexiosPlugin = {
+  name: 'auth-plugin',
+  install(fx) {
+    fx.on('beforeRequest', (ctx) => {
+      ctx.headers = { ...ctx.headers, Authorization: 'Bearer token' }
+      return ctx
+    })
+  },
 }
 
-const fx = new Fexios().plugin(authPlugin)
+const fx = new Fexios()
+await fx.plugin(authPlugin)
 ```
+
+### Official plugins
+
+See the plugin docs index: [`docs/plugins/README.md`](docs/plugins/README.md)
+
+- Cookie Jar: [`docs/plugins/cookie-jar.md`](docs/plugins/cookie-jar.md)
+- SSE (EventSource): [`docs/plugins/sse.md`](docs/plugins/sse.md)
+- WebSocket: [`docs/plugins/websocket.md`](docs/plugins/websocket.md)
 
 ---
 

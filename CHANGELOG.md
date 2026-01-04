@@ -17,6 +17,14 @@
   - `FexiosConfigs['responseType']` now only supports:
     - `'json' | 'text' | 'form' | 'blob' | 'arrayBuffer'`
 
+- **`fx.plugin(plugin)` return value changed**
+  - Previously, you may have relied on `fx.plugin(plugin)` returning a `Fexios` instance for chaining.
+  - Now, `await fx.plugin(plugin)` returns an **uninstall helper function** (to remove the plugin), not a `Fexios` instance.
+  - Migration:
+    - Use `await fx.plugin(plugin)` as a standalone call (no chaining).
+    - Or keep a reference:
+      - `const uninstall = await fx.plugin(plugin)`
+
 ### Migration
 
 - **Use plugins instead of core WS/SSE**
@@ -38,5 +46,5 @@
 
 - **Plugin lifecycle support**
   - `FexiosPlugin` now supports optional `uninstall(fx)` for cleanup.
-  - `fx.plugin(plugin)` returns an uninstall function.
+  - `fx.plugin(plugin)` now returns an uninstall function (see breaking change above).
   - `fx.uninstall(pluginOrName)` is available to remove a plugin at runtime.
