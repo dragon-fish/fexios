@@ -127,50 +127,36 @@ export async function createFexiosResponse<T = any>(
   const lenHeader = rawResponse.headers.get('content-length')
   const total = lenHeader ? Number(lenHeader) : 0
 
-  // Check for upgrade headers for websocket/stream
+  // Check for upgrade headers for websocket / SSE
   const upgrade = rawResponse.headers.get('upgrade')?.toLowerCase()
   const connection = rawResponse.headers.get('connection')?.toLowerCase()
+
+  // ws/sse are removed from core (moved to plugins). Still detect legacy usage & guide users.
+  if ((expectedType as any) === 'ws' || (expectedType as any) === 'stream') {
+    throw new FexiosError(
+      FexiosErrorCodes.FEATURE_MOVED_TO_PLUGIN,
+      `responseType "${String(
+        expectedType
+      )}" has been moved to plugins. Use "fexios/plugins" (fx.plugin(pluginWebSocket) / fx.plugin(pluginSSE)) and call fx.ws()/fx.sse() instead.`
+    )
+  }
+  if (upgrade === 'websocket' && connection === 'upgrade') {
+    throw new FexiosError(
+      FexiosErrorCodes.FEATURE_MOVED_TO_PLUGIN,
+      `WebSocket upgrade response detected. WebSocket support has been moved to plugins. Please use "fexios/plugins" and call fx.ws().`
+    )
+  }
+  if (contentType.includes('text/event-stream')) {
+    throw new FexiosError(
+      FexiosErrorCodes.FEATURE_MOVED_TO_PLUGIN,
+      `SSE (text/event-stream) response detected. SSE support has been moved to plugins. Please use "fexios/plugins" and call fx.sse().`
+    )
+  }
 
   let resolvedType: IFexiosResponse['responseType'] =
     expectedType ?? guessFexiosResponseType(contentType) ?? 'text'
 
-  // Auto-detect websocket/stream from headers if not explicitly set
-  if (!expectedType) {
-    if (upgrade === 'websocket' && connection === 'upgrade') {
-      resolvedType = 'ws'
-    } else if (contentType.includes('text/event-stream')) {
-      resolvedType = 'stream'
-    }
-  }
-
-  // special-cases that don't need body decoding
-  if (resolvedType === 'stream') {
-    const url = rawResponse.url || (rawResponse as any).url || ''
-    const response = await createFexiosEventSourceResponse(
-      url,
-      clonedRawResponse,
-      timeout
-    )
-    const decide = shouldThrow?.(response)
-    if (typeof decide === 'boolean' ? decide : !response.ok) {
-      throw new FexiosResponseError(response.statusText, response)
-    }
-    return response as FexiosResponse<T>
-  }
-  if (resolvedType === 'ws') {
-    // fetch 不产生 WebSocket；这里只返回占位，交由上层处理
-    const url = rawResponse.url || (rawResponse as any).url || ''
-    const response = await createFexiosWebSocketResponse(
-      url,
-      clonedRawResponse,
-      timeout
-    )
-    const decide = shouldThrow?.(response)
-    if (typeof decide === 'boolean' ? decide : !response.ok) {
-      throw new FexiosResponseError(response.statusText, response)
-    }
-    return response as FexiosResponse<T>
-  }
+  // Note: core no longer auto-detects websocket/sse here.
 
   // decode helpers
   const charset = /\bcharset=([^;]+)/i.exec(contentType)?.[1]?.trim() || 'utf-8'
@@ -252,141 +238,4 @@ export async function createFexiosResponse<T = any>(
   }
 
   return response
-}
-
-export async function createFexiosWebSocketResponse(
-  url: string | URL,
-  response?: Response,
-  timeout?: number
-) {
-  const ws = new WebSocket(url.toString())
-  const delay = timeout ?? 60000 // Default 60s timeout
-  await new Promise<void>((resolve, reject) => {
-    const timer =
-      delay > 0
-        ? setTimeout(() => {
-            ws.close()
-            reject(
-              new FexiosError(
-                FexiosErrorCodes.TIMEOUT,
-                `WebSocket connection timed out after ${delay}ms`
-              )
-            )
-          }, delay)
-        : undefined
-
-    let settled = false
-
-    const cleanup = () => {
-      clearTimeout(timer)
-      ws.removeEventListener('open', onOpen)
-      ws.removeEventListener('error', onError)
-      ws.removeEventListener('close', onClose)
-    }
-
-    const onOpen = () => {
-      if (!settled) {
-        settled = true
-        cleanup()
-        resolve()
-      }
-    }
-
-    const onError = (event: Event) => {
-      if (!settled) {
-        settled = true
-        cleanup()
-        reject(
-          new FexiosError(
-            FexiosErrorCodes.NETWORK_ERROR,
-            `WebSocket connection failed`,
-            undefined,
-            { cause: event }
-          )
-        )
-      }
-    }
-
-    const onClose = (event: CloseEvent) => {
-      if (!settled) {
-        settled = true
-        cleanup()
-        reject(
-          new FexiosError(
-            FexiosErrorCodes.NETWORK_ERROR,
-            `WebSocket connection closed unexpectedly (code: ${event.code}, reason: ${event.reason})`,
-            undefined,
-            { cause: event }
-          )
-        )
-      }
-    }
-
-    ws.addEventListener('open', onOpen)
-    ws.addEventListener('error', onError)
-    ws.addEventListener('close', onClose)
-  })
-  return new FexiosResponse<WebSocket>(response || new Response(null), ws, 'ws')
-}
-
-export async function createFexiosEventSourceResponse(
-  url: string | URL,
-  response?: Response,
-  timeout?: number
-) {
-  const es = new EventSource(url.toString())
-  const delay = timeout ?? 60000 // Default 60s timeout
-  await new Promise<void>((resolve, reject) => {
-    const timer =
-      delay > 0
-        ? setTimeout(() => {
-            es.close()
-            reject(
-              new FexiosError(
-                FexiosErrorCodes.TIMEOUT,
-                `EventSource connection timed out after ${delay}ms`
-              )
-            )
-          }, delay)
-        : undefined
-
-    let settled = false
-
-    const cleanup = () => {
-      clearTimeout(timer)
-      es.removeEventListener('open', onOpen)
-      es.removeEventListener('error', onError)
-    }
-
-    const onOpen = () => {
-      if (!settled) {
-        settled = true
-        cleanup()
-        resolve()
-      }
-    }
-
-    const onError = (event: Event) => {
-      if (!settled) {
-        settled = true
-        cleanup()
-        reject(
-          new FexiosError(
-            FexiosErrorCodes.NETWORK_ERROR,
-            `EventSource connection failed`,
-            undefined,
-            { cause: event }
-          )
-        )
-      }
-    }
-
-    es.addEventListener('open', onOpen)
-    es.addEventListener('error', onError)
-  })
-  return new FexiosResponse<EventSource>(
-    response || new Response(null),
-    es,
-    'stream'
-  )
 }

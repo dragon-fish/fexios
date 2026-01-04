@@ -1,7 +1,7 @@
-import { describe, expect, it, beforeAll, afterAll, vi } from 'vitest'
-import fexios, { Fexios } from '../src/index'
-import * as ModelExports from '../src/models/index.js'
-import { MockWebSocket, MOCK_FETCH_BASE_URL, mockFetch } from './mockFetch'
+import { describe, expect, it, beforeAll, afterAll } from 'vitest'
+import { Fexios, FexiosError, FexiosErrorCodes } from '../src/index'
+import { pluginWebSocket } from '../src/plugins/index.js'
+import { MockWebSocket, MOCK_FETCH_BASE_URL } from './mockFetch'
 
 const WS_URL = `${MOCK_FETCH_BASE_URL}/_ws`
 
@@ -21,26 +21,29 @@ describe('WebSocket', () => {
     }
   })
 
-  it('Should return WebSocket', async () => {
-    const { data } = await fexios.get<MockWebSocket>(WS_URL, {
-      fetch: mockFetch,
-    })
-    expect(data).to.be.instanceOf(MockWebSocket)
-    data?.close()
+  it('Legacy usage should throw plugin guidance error', async () => {
+    const fx = new Fexios({ baseURL: MOCK_FETCH_BASE_URL })
+    await expect(
+      fx.get(WS_URL.replace(/^http/, 'ws') as any)
+    ).rejects.toMatchObject({ code: FexiosErrorCodes.FEATURE_MOVED_TO_PLUGIN })
   })
 
-  it('Should handle ws:// or wss://', async () => {
-    const { data } = await fexios.get<MockWebSocket>(
-      WS_URL.replace(/^http/, 'ws')
-    )
-    expect(data).to.be.instanceOf(MockWebSocket)
-    data?.close()
+  it('Should connect via plugin (fx.ws)', async () => {
+    expect(pluginWebSocket).toBeDefined()
+    expect(typeof (pluginWebSocket as any).install).to.equal('function')
+    let fx: any = new Fexios({ baseURL: MOCK_FETCH_BASE_URL })
+    fx = await fx.plugin(pluginWebSocket)
+    const ws = await fx.ws(WS_URL.replace(/^http/, 'ws'))
+    expect(ws).to.be.instanceOf(MockWebSocket)
+    ws.close()
   })
 
   it('WebSocket message', async () => {
-    const { data: ws } = await fexios.get<MockWebSocket>(WS_URL, {
-      fetch: mockFetch,
-    })
+    let fx: any = new Fexios({ baseURL: MOCK_FETCH_BASE_URL })
+    fx = await fx.plugin(pluginWebSocket)
+    const ws = (await fx.ws(
+      WS_URL.replace(/^http/, 'ws')
+    )) as any as MockWebSocket
     const now = '' + Date.now()
     ws.send(now)
     const response = await new Promise<string>((resolve) => {
@@ -54,15 +57,36 @@ describe('WebSocket', () => {
     ws.close()
   })
 
-  it('Uses resolved timeout for WebSocket branch', async () => {
-    const spy = vi.spyOn(ModelExports, 'createFexiosWebSocketResponse')
-    const wsFexios = new Fexios({ timeout: 1234 })
-    const { data: ws } = await wsFexios.get<MockWebSocket>(
-      WS_URL.replace(/^http/, 'ws')
-    )
-    ws?.close()
-    const lastCall = spy.mock.calls[spy.mock.calls.length - 1]
-    expect(lastCall?.[2]).to.equal(1234)
-    spy.mockRestore()
+  it('Honors timeout in plugin when socket never opens', async () => {
+    class HangingWebSocket {
+      public url: string
+      public readyState: number = 0 // CONNECTING
+      private listeners = new Map<string, Set<(event: any) => void>>()
+      constructor(url: string) {
+        this.url = url
+      }
+      addEventListener(type: string, listener: (event: any) => void) {
+        if (!this.listeners.has(type)) this.listeners.set(type, new Set())
+        this.listeners.get(type)!.add(listener)
+      }
+      removeEventListener(type: string, listener: (event: any) => void) {
+        this.listeners.get(type)?.delete(listener)
+      }
+      close() {
+        this.readyState = 3
+      }
+      // no open/error events will be emitted -> should timeout
+    }
+    const prev = (globalThis as any).WebSocket
+    ;(globalThis as any).WebSocket = HangingWebSocket
+    try {
+      let fx: any = new Fexios({ baseURL: MOCK_FETCH_BASE_URL, timeout: 25 })
+      fx = await fx.plugin(pluginWebSocket)
+      await expect(fx.ws(WS_URL.replace(/^http/, 'ws'))).rejects.toBeInstanceOf(
+        FexiosError
+      )
+    } finally {
+      ;(globalThis as any).WebSocket = prev
+    }
   })
 })

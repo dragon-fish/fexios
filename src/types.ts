@@ -57,14 +57,6 @@ export interface FexiosConfigs {
    * - If body is Blob or TypedArray, it will be converted to ArrayBuffer.
    * - If body is text-like, it will be converted to ArrayBuffer using UTF-8 encoding.
    *
-   * ### `"ws"`
-   * - If Response requires upgrading to WebSocket, it will be handled accordingly.
-   * - Otherwise, an error will be thrown.
-   *
-   * ### `"stream"`
-   * - If Response requires upgrading to ReadableStream, it will be handled accordingly.
-   * - Otherwise, an error will be thrown.
-   *
    * ### `undefined`
    * This means auto-detect based on content-type header.
    * - `application/json` -> JSON
@@ -74,18 +66,11 @@ export interface FexiosConfigs {
    * - `image/*`, `video/*`, `audio/*`, `application/pdf` -> Blob
    * - Others -> Try to detect if it's probably text data, if yes, Text, otherwise ArrayBuffer
    * - For unknown content-type, if content-length is 0, Text will be assumed.
-   * - Upgrade to WebSocket / stream will be handled accordingly.
+   * - Note: WebSocket / SSE are NOT handled by core. Use plugins instead.
    *
    * If transformation fails, ArrayBuffer / stream / FormData will be sent as is.
    */
-  responseType?:
-    | 'json'
-    | 'text'
-    | 'form'
-    | 'blob'
-    | 'arrayBuffer'
-    | 'ws'
-    | 'stream'
+  responseType?: 'json' | 'text' | 'form' | 'blob' | 'arrayBuffer'
   fetch?: FetchLike
 }
 
@@ -241,5 +226,6 @@ export interface IFexiosResponse<T = any>
 
 export type FexiosPlugin = {
   name: string
-  install: (app: Fexios) => Fexios | Promise<Fexios> | void
+  install: (fx: Fexios) => Fexios | Promise<Fexios> | void
+  uninstall?: (fx: Fexios) => void
 }
