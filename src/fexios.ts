@@ -15,7 +15,6 @@ import type {
 } from './types.js'
 import {
   createFexiosResponse,
-  createFexiosWebSocketResponse,
   FexiosError,
   FexiosErrorCodes,
   FexiosHeaderBuilder,
@@ -211,23 +210,21 @@ export class Fexios extends CallableInstance<
     const timeout = ctx.timeout ?? this.baseConfigs.timeout ?? 60 * 1000
     const shouldThrow = ctx.shouldThrow ?? this.baseConfigs.shouldThrow
 
-    // WebSocket 分支
-    if (ctx.url.startsWith('ws') || ctx.responseType === 'ws') {
-      const response = await createFexiosWebSocketResponse(
-        ctx.url,
-        undefined,
-        timeout
+    // WebSocket / SSE are moved to plugins in the next major version.
+    // Keep a helpful runtime error for legacy usage.
+    if (ctx.url.startsWith('ws') || (ctx.responseType as any) === 'ws') {
+      throw new FexiosError(
+        FexiosErrorCodes.FEATURE_MOVED_TO_PLUGIN,
+        `WebSocket support has been moved to plugins. Use "fexios/plugins" and call fx.ws() instead.`,
+        ctx
       )
-      const finalCtx = {
-        ...ctx,
-        response,
-        rawResponse: undefined!,
-        data: response.data,
-        headers: response.headers,
-      } as FexiosFinalContext<WebSocket>
-      return this.emit('afterResponse', finalCtx) as Promise<
-        FexiosFinalContext<T>
-      >
+    }
+    if ((ctx.responseType as any) === 'stream') {
+      throw new FexiosError(
+        FexiosErrorCodes.FEATURE_MOVED_TO_PLUGIN,
+        `SSE support has been moved to plugins. Use "fexios/plugins" and call fx.sse() instead.`,
+        ctx
+      )
     }
 
     // —— fetch + 超时控制 —— //
@@ -566,13 +563,21 @@ export class Fexios extends CallableInstance<
         return fx
       }
     }
-    return this
+    return () => {
+      this.uninstall(plugin)
+    }
+  }
+  uninstall(plugin: FexiosPlugin | string) {
+    if (typeof plugin === 'string') {
+      plugin = this._plugins.get(plugin)!
+    }
+    if (plugin) {
+      plugin?.uninstall?.(this)
+      this._plugins.delete(plugin.name)
+    }
   }
 
   // 版本弃子们.jpg
-  /** @deprecated Use `import { checkIsPlainObject } from 'fexios/utils'` instead */
-  readonly checkIsPlainObject = isPlainObject
-
   /** @deprecated Use `mergeQueries` instead */
   readonly mergeQuery = this.mergeQueries
 }
