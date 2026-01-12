@@ -20,7 +20,7 @@ export type FexiosSSEContext = {
   eventSource?: EventSource
 }
 
-declare module '@/index.js' {
+declare module 'fexios' {
   interface Fexios {
     /**
      * Connect SSE (EventSource) (moved out of core).
@@ -30,7 +30,7 @@ declare module '@/index.js' {
   }
 }
 
-declare module '@/types.js' {
+declare module 'fexios/types' {
   interface FexiosLifecycleEventMap {
     'sse:beforeConnect': FexiosSSEContext
     'sse:open': FexiosSSEContext & { event: Event }

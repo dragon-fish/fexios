@@ -7,7 +7,7 @@ const COOKIE_JAR_PLUGIN_UNINSTALLER = Symbol(
   'fexios-plugin-cookie-jar-uninstaller'
 )
 
-declare module '@/index.js' {
+declare module 'fexios' {
   interface Fexios {
     cookieJar?: CookieJar
   }

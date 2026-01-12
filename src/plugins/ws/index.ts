@@ -26,7 +26,7 @@ export type FexiosWebSocketContext = {
   socket?: WebSocket
 }
 
-declare module '@/index.js' {
+declare module 'fexios' {
   interface Fexios {
     /**
      * Connect a WebSocket (moved out of core).
@@ -39,7 +39,7 @@ declare module '@/index.js' {
   }
 }
 
-declare module '@/types.js' {
+declare module 'fexios/types' {
   interface FexiosLifecycleEventMap {
     'websocket:beforeConnect': FexiosWebSocketContext
     'websocket:open': FexiosWebSocketContext

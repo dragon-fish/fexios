@@ -9,7 +9,7 @@ export type FexiosPostFormInput = FormData | HTMLFormElement
 export type FexiosPostFormRecord = Record<string, string | Blob>
 export type FexiosPostFormAnyInput = FexiosPostFormInput | FexiosPostFormRecord
 
-declare module '@/index.js' {
+declare module 'fexios' {
   interface Fexios {
     /**
      * Post a form with a simpler API.

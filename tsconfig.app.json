@@ -20,7 +20,9 @@
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "declaration": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "fexios": ["./src/index.ts"],
+      "fexios/*": ["./src/*"]
     }
   }
 }
