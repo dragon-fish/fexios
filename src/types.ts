@@ -57,14 +57,6 @@ export interface FexiosConfigs {
    * - If body is Blob or TypedArray, it will be converted to ArrayBuffer.
    * - If body is text-like, it will be converted to ArrayBuffer using UTF-8 encoding.
    *
-   * ### `"ws"`
-   * - If Response requires upgrading to WebSocket, it will be handled accordingly.
-   * - Otherwise, an error will be thrown.
-   *
-   * ### `"stream"`
-   * - If Response requires upgrading to ReadableStream, it will be handled accordingly.
-   * - Otherwise, an error will be thrown.
-   *
    * ### `undefined`
    * This means auto-detect based on content-type header.
    * - `application/json` -> JSON
@@ -74,18 +66,11 @@ export interface FexiosConfigs {
    * - `image/*`, `video/*`, `audio/*`, `application/pdf` -> Blob
    * - Others -> Try to detect if it's probably text data, if yes, Text, otherwise ArrayBuffer
    * - For unknown content-type, if content-length is 0, Text will be assumed.
-   * - Upgrade to WebSocket / stream will be handled accordingly.
+   * - Note: WebSocket / SSE are NOT handled by core. Use plugins instead.
    *
    * If transformation fails, ArrayBuffer / stream / FormData will be sent as is.
    */
-  responseType?:
-    | 'json'
-    | 'text'
-    | 'form'
-    | 'blob'
-    | 'arrayBuffer'
-    | 'ws'
-    | 'stream'
+  responseType?: 'json' | 'text' | 'form' | 'blob' | 'arrayBuffer'
   fetch?: FetchLike
 }
 
@@ -102,34 +87,108 @@ export interface FexiosRequestOptions extends Omit<FexiosConfigs, 'headers'> {
    * Request body
    */
   body?: Record<string, any> | string | FormData | URLSearchParams
-  abortController?: AbortController
-  onProgress?: (progress: number, buffer?: Uint8Array) => void
   /**
    * Custom environment variables, can be any value.
    * Useful for passing data between hooks.
    */
   customEnv?: any
+  /**
+   * AbortController for cancellation/timeout control.
+   * @note
+   * In v6, this will be moved to `ctx.runtime.abortController` in lifecycle hooks.
+   */
+  abortController?: AbortController
+  /**
+   * Progress callback for streaming responses.
+   * @note
+   * In v6, this will be moved to `ctx.runtime.onProgress` in lifecycle hooks.
+   */
+  onProgress?: (progress: number, buffer?: Uint8Array) => void
 }
 
-export interface FexiosContext<T = any> extends FexiosRequestOptions {
+export type FexiosRequestContext = Omit<
+  FexiosRequestOptions,
+  'url' | 'abortController' | 'onProgress' | 'customEnv'
+> & {
+  /** Request URL, may be relative before normalization */
   url: string
+  /**
+   * Built Request instance that will be sent (after hooks & normalization).
+   * Available from `beforeActualFetch` and later.
+   */
   rawRequest?: Request
+}
+
+export type FexiosRuntimeContext = {
+  abortController?: AbortController
+  onProgress?: (progress: number, buffer?: Uint8Array) => void
+  /**
+   * Custom environment variables, can be any value.
+   * Useful for passing data between hooks and plugins.
+   */
+  customEnv?: any
+}
+
+// Alias for response, make all context names more unified
+export { FexiosResponse as FexiosResponseContext }
+
+export interface FexiosContext<T = any> {
+  /**
+   * The current Fexios instance handling this request.
+   * This is injected by core before any lifecycle hooks are executed.
+   */
+  readonly app: Fexios
+  request: FexiosRequestContext
+  runtime: FexiosRuntimeContext
+  /**
+   * Parsed response wrapper.
+   * Available in `afterResponse` and in the final returned context.
+   */
+  response?: FexiosResponse<T>
+  /**
+   * Raw response (may be the original Response before parsing).
+   * Available from `afterRawResponse` and later.
+   * @note
+   * In final context, `ctx.rawResponse === ctx.response.rawResponse` (unread original Response).
+   */
   rawResponse?: Response
-  response?: FexiosResponse
-  /** Resolved response body */
+
+  /**
+   * --- Legacy aliases (v5) ---
+   * They are kept for easier migration and will be removed in a future major.
+   */
+  /** @deprecated Use `ctx.request.url` */
+  url: string
+  /** @deprecated Use `ctx.request.method` */
+  method?: FexiosMethods
+  /** @deprecated Use `ctx.request.headers` */
+  headers: FexiosRequestOptions['headers']
+  /** @deprecated Use `ctx.request.query` */
+  query: FexiosRequestOptions['query']
+  /** @deprecated Use `ctx.request.body` */
+  body?: FexiosRequestOptions['body']
+  /** @deprecated Use `ctx.runtime.abortController` */
+  abortController?: AbortController
+  /** @deprecated Use `ctx.runtime.onProgress` */
+  onProgress?: (progress: number, buffer?: Uint8Array) => void
+  /** @deprecated Use `ctx.runtime.customEnv` */
+  customEnv?: any
+  /** @deprecated Use `ctx.request.rawRequest` */
+  rawRequest?: Request
+  /**
+   * Resolved response body (shortcut, usually only meaningful after response is ready)
+   */
   data?: T
 }
 
 export type FexiosFinalContext<T = any> = Omit<
   Required<FexiosContext<T>>,
-  | 'onProgress'
-  | 'abortController'
-  | 'headers'
-  | 'responseType'
-  | 'url'
-  | 'query'
-  | 'data'
+  'headers' | 'url' | 'responseType' | 'data' | 'rawRequest' | 'rawResponse' // redefined below as readonly shortcut
 > & {
+  /** Shortcut: response raw Request */
+  readonly rawRequest: Request
+  /** Shortcut: response raw Response (unread original Response) */
+  readonly rawResponse: Response
   /** Response Headers */
   readonly headers: Headers
   /**
@@ -138,18 +197,6 @@ export type FexiosFinalContext<T = any> = Omit<
    * This is a read-only property,
    * if you want to completely replace the ctx.data,
    * you should return Response in `afterResponse` hook.
-   * @example
-   * ```
-   * // DO THIS √
-   * fx.on('afterResponse', (ctx) => {
-   *   return Response.json({ newData: 'new data' }, { status: 200 })
-   * })
-   * // DON'T DO THIS ×
-   * fx.on('afterResponse', (ctx) => {
-   *   ctx.data = { newData: 'new data' } // error!
-   *   return ctx
-   * })
-   * ```
    */
   readonly data: T
   /**
@@ -187,15 +234,13 @@ export interface FexiosLifecycleEventMap {
   beforeActualFetch: Required<
     Omit<FexiosContext, 'rawResponse' | 'response' | 'data'>
   >
+  afterRawResponse: Required<Omit<FexiosContext, 'response' | 'data'>>
   afterResponse: FexiosFinalContext
 }
 
-export interface FexiosInterceptor<
-  E extends FexiosLifecycleEvents,
-  C = FexiosLifecycleEventMap[E]
-> {
-  handlers: () => FexiosHook[]
-  use: (hook: FexiosHook<C>, prepend?: boolean) => any
+export interface FexiosInterceptor<E extends FexiosLifecycleEvents> {
+  handlers: () => FexiosHookHandler<E>[]
+  use: (hook: FexiosHookHandler<E>, prepend?: boolean) => any
   clear: () => void
 }
 
@@ -203,6 +248,14 @@ export interface FexiosInterceptors {
   request: FexiosInterceptor<'beforeRequest'>
   response: FexiosInterceptor<'afterResponse'>
 }
+
+// Util type for create fexios hooks
+// const onBeforeRequest: FexiosHookHandler<'beforeRequest'> = (ctx) => {...}
+export type FexiosHookHandler<E extends FexiosLifecycleEvents> = FexiosHook<
+  FexiosLifecycleEventMap[E]
+> extends (ctx: FexiosLifecycleEventMap[E]) => any
+  ? (ctx: FexiosLifecycleEventMap[E]) => any
+  : never
 
 type LowerAndUppercase<T extends string> = Lowercase<T> | Uppercase<T>
 
@@ -241,5 +294,6 @@ export interface IFexiosResponse<T = any>
 
 export type FexiosPlugin = {
   name: string
-  install: (app: Fexios) => Fexios | Promise<Fexios> | void
+  install: (fx: Fexios) => Fexios | void
+  uninstall?: (fx: Fexios) => void
 }

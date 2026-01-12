@@ -14,8 +14,3 @@ export function isPlainObject(payload: any): payload is Record<string, any> {
   const proto = Object.getPrototypeOf(payload)
   return proto === Object.prototype || proto === null
 }
-
-export {
-  /** @deprecated use isPlainObject instead */
-  isPlainObject as checkIsPlainObject,
-}

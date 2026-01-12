@@ -233,7 +233,6 @@ Fexios 采用简化的两阶段合并策略：
 - 如果你在钩子中替换了 `ctx.url`，除非你手动保留，否则原 URL 中的 search params 将会丢失。
 - 如需在钩子中修改查询参数，建议直接操作 `ctx.query`。
 
-
 ## 钩子
 
 你可以在钩子回调中修改上下文，然后将其作为全新的上下文 ™ 返回。
@@ -333,19 +332,14 @@ fexios.interceptors.response.use((ctx) => {})
 
 ## 插件
 
-```ts
-import type { FexiosPlugin } from 'fexios'
+插件文档主目录：[`docs/plugins/README.md`](docs/plugins/README.md)
 
-const authPlugin: FexiosPlugin = (app) => {
-  app.on('beforeRequest', (ctx) => {
-    ctx.headers = { ...ctx.headers, Authorization: 'Bearer token' }
-    return ctx
-  })
-  return app // 你可以返回 app，或者省略返回值
-}
+官方插件：
 
-const fx = new Fexios().plugin(authPlugin)
-```
+- Cookie Jar：[`docs/plugins/cookie-jar.md`](docs/plugins/cookie-jar.md)
+- SSE (EventSource)：[`docs/plugins/sse.md`](docs/plugins/sse.md)
+- WebSocket：[`docs/plugins/websocket.md`](docs/plugins/websocket.md)
+- ……也许会有更多？
 
 ---
 

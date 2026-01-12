@@ -1,7 +1,11 @@
-import { FexiosPlugin } from '@/index.js'
+import type { FexiosHookHandler, FexiosPlugin } from '@/index.js'
 import { CookieJar } from './CookieJar.js'
 
 export * from './CookieJar.js'
+
+const COOKIE_JAR_PLUGIN_UNINSTALLER = Symbol(
+  'fexios-plugin-cookie-jar-uninstaller'
+)
 
 declare module '@/index.js' {
   interface Fexios {
@@ -11,28 +15,41 @@ declare module '@/index.js' {
 
 export const pluginCookieJar: FexiosPlugin = {
   name: 'fexios-plugin-cookie-jar',
-  install(app) {
+  install(fx) {
     const cookieJar = new CookieJar()
 
+    // Expose cookieJar instance on app for external access
+    fx.cookieJar = cookieJar
+
     // Request interceptor: add cookies to request headers
-    app.interceptors.request.use((ctx) => {
-      const url = new URL(ctx.url!)
-      const cookieHeader = cookieJar.getCookieHeader(url.hostname, url.pathname)
+    const onBeforeRequest: FexiosHookHandler<'beforeRequest'> = (ctx) => {
+      if (!fx.cookieJar) {
+        return
+      }
+      const url = new URL(ctx.request.url!)
+      const cookieHeader = fx.cookieJar.getCookieHeader(
+        url.hostname,
+        url.pathname
+      )
 
       if (cookieHeader) {
-        ctx.headers = {
-          ...ctx.headers,
+        ctx.request.headers = {
+          ...(ctx.request.headers as any),
           Cookie: cookieHeader,
         }
       }
 
       return ctx
-    })
+    }
+    fx.on('beforeRequest', onBeforeRequest)
 
     // Response interceptor: parse Set-Cookie header
-    app.interceptors.response.use((ctx) => {
+    const onAfterResponse: FexiosHookHandler<'afterResponse'> = (ctx) => {
+      if (!fx.cookieJar) {
+        return
+      }
       const url = new URL(ctx.url!)
-      const headersAny = ctx.rawResponse?.headers as any
+      const headersAny = ctx.response.rawResponse?.headers as any
       const host = url.hostname
       const reqPath = url.pathname
 
@@ -46,22 +63,34 @@ export const pluginCookieJar: FexiosPlugin = {
         const list: string[] = getSetCookie()
         if (Array.isArray(list) && list.length > 0) {
           for (const sc of list) {
-            cookieJar.parseSetCookieHeader(sc, host, reqPath)
+            fx.cookieJar.parseSetCookieHeader(sc, host, reqPath)
           }
         }
       } else {
-        const setCookieHeader = ctx.rawResponse?.headers?.get('set-cookie')
+        const setCookieHeader =
+          ctx.response.rawResponse?.headers?.get('set-cookie')
         if (setCookieHeader) {
-          cookieJar.parseSetCookieHeader(setCookieHeader, host, reqPath)
+          fx.cookieJar.parseSetCookieHeader(setCookieHeader, host, reqPath)
         }
       }
 
       return ctx
-    })
+    }
+    fx.on('afterResponse', onAfterResponse)
 
-    // Expose cookieJar instance on app for external access
-    app.cookieJar = cookieJar
-
-    return app
+    const uninstaller = () => {
+      fx.off('beforeRequest', onBeforeRequest)
+      fx.off('afterResponse', onAfterResponse)
+      fx.cookieJar = undefined
+    }
+    ;(fx as any)[COOKIE_JAR_PLUGIN_UNINSTALLER] = uninstaller as () => void
+  },
+  uninstall(fx) {
+    const uninstaller = (fx as any)[COOKIE_JAR_PLUGIN_UNINSTALLER] as
+      | (() => void)
+      | undefined
+    if (typeof uninstaller === 'function') {
+      uninstaller()
+    }
   },
 }

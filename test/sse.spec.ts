@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll } from 'vitest'
-import fexios, { Fexios } from '../src/index'
-import * as ModelExports from '../src/models/index.js'
-import { mockFetch, MockEventSource, MOCK_FETCH_BASE_URL } from './mockFetch'
+import { Fexios, FexiosError, FexiosErrorCodes } from '../src/index'
+import { pluginSSE } from '../src/plugins/index.js'
+import { MockEventSource, MOCK_FETCH_BASE_URL } from './mockFetch'
 
 const SSE_URL = `${MOCK_FETCH_BASE_URL}/_sse`
 
@@ -21,11 +21,27 @@ describe('SSE', () => {
     }
   })
 
-  it('Server Sent Events', async () => {
-    const { data: sse } = await fexios.get<MockEventSource>(SSE_URL, {
-      query: { timeout: 3 },
-      fetch: mockFetch,
+  it('Legacy usage should throw plugin guidance error (text/event-stream)', async () => {
+    const fx = new Fexios({
+      baseURL: MOCK_FETCH_BASE_URL,
+      fetch: async () =>
+        new Response(null, {
+          headers: { 'content-type': 'text/event-stream' },
+        }),
     })
+    await expect(fx.get('/anything' as any)).rejects.toMatchObject({
+      code: FexiosErrorCodes.FEATURE_MOVED_TO_PLUGIN,
+    })
+  })
+
+  it('Server Sent Events via plugin (fx.sse)', async () => {
+    expect(pluginSSE).toBeDefined()
+    expect(typeof (pluginSSE as any).install).to.equal('function')
+    let fx: any = new Fexios({ baseURL: MOCK_FETCH_BASE_URL })
+    fx = await fx.plugin(pluginSSE)
+    const sse = (await fx.sse(SSE_URL, {
+      query: { timeout: 3 },
+    })) as any as MockEventSource
     let messages: any[] = []
     await new Promise<void>((resolve) => {
       sse.onmessage = (event) => {
@@ -42,8 +58,8 @@ describe('SSE', () => {
     expect(messages[2]).to.include('Message 3')
   })
 
-  it('Honors resolved timeout when EventSource never opens', async () => {
-    const originalEventSource = (globalThis as any).EventSource
+  it('Honors timeout in plugin when EventSource never opens', async () => {
+    const originalEventSource2 = (globalThis as any).EventSource
     class HangingEventSource {
       url: string
       listeners = new Map<string, Set<(event: any) => void>>()
@@ -64,27 +80,13 @@ describe('SSE', () => {
       }
     }
 
-    ;(globalThis as any).EventSource = HangingEventSource
-    const res = new Response(null, {
-      status: 200,
-      headers: {
-        'content-type': 'text/event-stream',
-      },
-    })
-    Object.defineProperty(res, 'url', { value: SSE_URL, writable: false })
-
     try {
-      await expect(
-        ModelExports.createFexiosResponse(
-          res,
-          undefined,
-          undefined,
-          undefined,
-          25
-        )
-      ).rejects.toThrow('EventSource connection timed out after 25ms')
+      ;(globalThis as any).EventSource = HangingEventSource
+      let fx: any = new Fexios({ baseURL: MOCK_FETCH_BASE_URL, timeout: 25 })
+      fx = await fx.plugin(pluginSSE)
+      await expect(fx.sse(SSE_URL)).rejects.toBeInstanceOf(FexiosError)
     } finally {
-      ;(globalThis as any).EventSource = originalEventSource
+      ;(globalThis as any).EventSource = originalEventSource2
     }
   })
 })

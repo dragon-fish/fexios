@@ -21,7 +21,7 @@ Fetch based HTTP client with similar API to axios for browser and Node.js
 - [x] 😏 Automatic transforms for JSON data
 - [x] 🤩 Instances with custom defaults
 - [x] 🫡 Instance extendable
-- [x] 😍 Fricking tiny size: `index.umd.cjs  8.51 kB │ gzip: 3.48 kB │ map: 31.96 kB`
+- [x] 😍 Fricking tiny size: ~6kb (gzipped)
 
 ## Installation
 
@@ -347,19 +347,14 @@ fexios.interceptors.response.use((ctx) => {})
 
 ## Plugin
 
-```ts
-import type { FexiosPlugin } from 'fexios'
+See the plugin docs index: [`docs/plugins/README.md`](docs/plugins/README.md)
 
-const authPlugin: FexiosPlugin = (app) => {
-  app.on('beforeRequest', (ctx) => {
-    ctx.headers = { ...ctx.headers, Authorization: 'Bearer token' }
-    return ctx
-  })
-  return app // You can return app, or omit the return value
-}
+Official plugins:
 
-const fx = new Fexios().plugin(authPlugin)
-```
+- Cookie Jar: [`docs/plugins/cookie-jar.md`](docs/plugins/cookie-jar.md)
+- SSE (EventSource): [`docs/plugins/sse.md`](docs/plugins/sse.md)
+- WebSocket: [`docs/plugins/websocket.md`](docs/plugins/websocket.md)
+- ...and maybe more?
 
 ---
 

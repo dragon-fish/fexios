@@ -264,10 +264,10 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
       fx.on('beforeRequest', (ctx) => {
         // Introduce URL-level param; will be lower than ctx.query unless ctx.query uses undefined
         // NOTE: This REPLACES the original URL, so any params in original URL (like reqKeep) are LOST
-        ctx.url = '/path?u=urlOnly&a=hookURL&keep=beforeRequest'
+        ctx.request.url = '/path?u=urlOnly&a=hookURL&keep=beforeRequest'
         // Apply undefined (no change) and null (remove) at highest layer
-        ctx.query = {
-          ...ctx.query,
+        ctx.request.query = {
+          ...(ctx.request.query as any),
           a: undefined, // should keep from URL (hookURL), not override
           keep: undefined, // should keep from URL (beforeRequest)
           rm: null, // should remove
@@ -348,11 +348,13 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
       // mutate in hook: set both url (with search) and query, query should win
       fx.on('beforeRequest', (ctx) => {
         // add search via url
-        ctx.url =
-          ctx.url + (ctx.url.includes('?') ? '&' : '?') + 'from=hookURL&u2=url2'
+        ctx.request.url =
+          ctx.request.url +
+          (ctx.request.url.includes('?') ? '&' : '?') +
+          'from=hookURL&u2=url2'
         // override and delete via query
-        ctx.query = {
-          ...ctx.query,
+        ctx.request.query = {
+          ...(ctx.request.query as any),
           from: 'hookQuery', // highest
           keep: undefined, // keep base keep
           remove: null, // delete
@@ -395,8 +397,8 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
       })
 
       fx.on('beforeRequest', (ctx) => {
-        ctx.headers = {
-          ...(ctx.headers as any),
+        ctx.request.headers = {
+          ...(ctx.request.headers as any),
           'X-Default': 'hook',
           'X-Hook': '1',
         } as any
@@ -431,8 +433,8 @@ describe('Integration Tests - HTTP Requests with Merge Logic', () => {
       })
 
       fx.on('beforeRequest', (ctx) => {
-        ctx.headers = {
-          ...(ctx.headers as any),
+        ctx.request.headers = {
+          ...(ctx.request.headers as any),
           'X-Base': 'HOOK', // highest
           'X-Undefined': undefined, // no change (should not create)
           'X-Remove2': null, // remove

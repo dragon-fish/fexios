@@ -11,19 +11,19 @@ describe('Fexios Hooks', () => {
       fetch: mockFetch,
     })
     fexios.on('beforeInit', (ctx) => {
-      expect(ctx.url).to.equal('/anything/1')
-      ctx.url = '/anything/2'
-      ctx.query = {
+      expect(ctx.request.url).to.equal('/anything/1')
+      ctx.request.url = '/anything/2'
+      ctx.request.query = {
         foo: 'bar',
       }
       return ctx
     })
     fexios.on('beforeRequest', (ctx) => {
-      expect(ctx.url).to.equal(`${MOCK_FETCH_BASE_URL}/anything/2`)
-      expect((ctx as any).query.foo).to.equal('bar')
+      expect(ctx.request.url).to.equal(`${MOCK_FETCH_BASE_URL}/anything/2`)
+      expect((ctx.request as any).query.foo).to.equal('bar')
       // update path via url, and update query via ctx.query
-      ctx.url = ctx.url.replace('2', '3')
-      ctx.query = { ...(ctx as any).query, foo: 'baz' }
+      ctx.request.url = ctx.request.url.replace('2', '3')
+      ctx.request.query = { ...(ctx.request as any).query, foo: 'baz' }
       return ctx
     })
     fexios.on('afterResponse', (ctx) => {
@@ -73,8 +73,8 @@ describe('Fexios Hooks', () => {
       fetch: mockFetch,
     })
     fexios.interceptors.request.use((ctx) => {
-      expect(ctx.url).to.equal(`${MOCK_FETCH_BASE_URL}/anything/1`)
-      ctx.url = ctx.url.replace('1', '2')
+      expect(ctx.request.url).to.equal(`${MOCK_FETCH_BASE_URL}/anything/1`)
+      ctx.request.url = ctx.request.url.replace('1', '2')
       return ctx
     })
     fexios.interceptors.response.use((ctx) => {
@@ -95,24 +95,24 @@ describe('Fexios Hooks', () => {
 
     // prepare base url and initial query in beforeInit
     fexios.on('beforeInit', (ctx) => {
-      ctx.url = '/anything/hook'
-      ctx.query = { a: '1' }
+      ctx.request.url = '/anything/hook'
+      ctx.request.query = { a: '1' }
       return ctx
     })
 
     // ensure normalized url before body transformed
     fexios.on('beforeRequest', (ctx) => {
-      expect(ctx.url).to.equal(`${MOCK_FETCH_BASE_URL}/anything/hook`)
-      expect((ctx as any).query.a).to.equal('1')
+      expect(ctx.request.url).to.equal(`${MOCK_FETCH_BASE_URL}/anything/hook`)
+      expect((ctx.request as any).query.a).to.equal('1')
       return ctx
     })
 
     // modify url (path + query) in afterBodyTransformed
     fexios.on('afterBodyTransformed', (ctx) => {
-      const u = new URL(ctx.url)
+      const u = new URL(ctx.request.url)
       u.pathname = '/anything/after'
       u.searchParams.set('q', 'after')
-      ctx.url = '' + u
+      ctx.request.url = '' + u
       return ctx
     })
 
@@ -137,14 +137,14 @@ describe('Fexios Hooks', () => {
 
     // initial url with query from url string
     fexios.on('beforeInit', (ctx) => {
-      ctx.url = '/anything/qr?foo=1&keep=ok'
+      ctx.request.url = '/anything/qr?foo=1&keep=ok'
       return ctx
     })
 
     // change query in beforeRequest
     fexios.on('beforeRequest', (ctx) => {
       // here we override foo and add bar, keep remains
-      ctx.query = { ...ctx.query, foo: '2', bar: 'x' }
+      ctx.request.query = { ...(ctx.request.query as any), foo: '2', bar: 'x' }
       return ctx
     })
 
@@ -166,14 +166,14 @@ describe('Fexios Hooks', () => {
     })
 
     fexios.on('beforeInit', (ctx) => {
-      ctx.url = '/anything/after-query?x=1'
-      ctx.query = { y: '2' }
+      ctx.request.url = '/anything/after-query?x=1'
+      ctx.request.query = { y: '2' }
       return ctx
     })
 
     fexios.on('afterBodyTransformed', (ctx) => {
       // override x and add z via query mutation
-      ctx.query = { ...ctx.query, x: '9', z: 'ok' }
+      ctx.request.query = { ...(ctx.request.query as any), x: '9', z: 'ok' }
       return ctx
     })
 

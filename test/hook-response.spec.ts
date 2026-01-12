@@ -25,7 +25,7 @@ describe('Fexios Hooks - Response short-circuit', () => {
 
     fx.on('afterResponse', (ctx) => {
       afterCalled++
-      expect(ctx.response!.status).to.equal(201)
+      expect(ctx.response.status).to.equal(201)
       expect(ctx.headers).to.be.instanceOf(Headers)
       expect((ctx.data as any).hi).to.equal('there')
       ;(ctx.data as any).extra = 'ok'

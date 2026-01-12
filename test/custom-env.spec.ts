@@ -13,13 +13,13 @@ describe('Custom Environment', () => {
     let envInAfterResponse: any
 
     fexios.on('beforeRequest', (ctx) => {
-      envInBeforeRequest = ctx.customEnv
-      ctx.customEnv = { ...ctx.customEnv, modified: true }
+      envInBeforeRequest = ctx.runtime.customEnv
+      ctx.runtime.customEnv = { ...ctx.runtime.customEnv, modified: true }
       return ctx
     })
 
     fexios.on('afterResponse', (ctx) => {
-      envInAfterResponse = ctx.customEnv
+      envInAfterResponse = ctx.runtime.customEnv
       return ctx
     })
 
@@ -42,7 +42,7 @@ describe('Custom Environment', () => {
     let capturedEnv: any
 
     fexios.on('beforeRequest', (ctx) => {
-      capturedEnv = ctx.customEnv
+      capturedEnv = ctx.runtime.customEnv
       return ctx
     })
 
