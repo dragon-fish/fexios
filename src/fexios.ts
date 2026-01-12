@@ -405,7 +405,8 @@ export class Fexios extends CallableInstance<
       if (timer) clearTimeout(timer)
 
       ctx.rawResponse = rawResponse
-      this.emit('afterRawResponse', ctx)
+      await this.emit('afterRawResponse', ctx)
+      if ((ctx as any)[Fexios.FINAL_SYMBOL]) return ctx as any
 
       ctx.response = await createFexiosResponse(
         rawResponse,
