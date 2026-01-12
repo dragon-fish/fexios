@@ -181,12 +181,9 @@ export interface FexiosLifecycleEventMap {
   afterResponse: FexiosFinalContext
 }
 
-export interface FexiosInterceptor<
-  E extends FexiosLifecycleEvents,
-  C = FexiosLifecycleEventMap[E]
-> {
-  handlers: () => FexiosHook[]
-  use: (hook: FexiosHook<C>, prepend?: boolean) => any
+export interface FexiosInterceptor<E extends FexiosLifecycleEvents> {
+  handlers: () => FexiosHookHandler<E>[]
+  use: (hook: FexiosHookHandler<E>, prepend?: boolean) => any
   clear: () => void
 }
 
@@ -194,6 +191,14 @@ export interface FexiosInterceptors {
   request: FexiosInterceptor<'beforeRequest'>
   response: FexiosInterceptor<'afterResponse'>
 }
+
+// Util type for create fexios hooks
+// const onBeforeRequest: FexiosHookHandler<'beforeRequest'> = (ctx) => {...}
+export type FexiosHookHandler<E extends FexiosLifecycleEvents> = FexiosHook<
+  FexiosLifecycleEventMap[E]
+> extends (ctx: FexiosLifecycleEventMap[E]) => any
+  ? (ctx: FexiosLifecycleEventMap[E]) => any
+  : never
 
 type LowerAndUppercase<T extends string> = Lowercase<T> | Uppercase<T>
 

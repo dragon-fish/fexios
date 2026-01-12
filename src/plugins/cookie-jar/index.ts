@@ -1,14 +1,11 @@
-import type { FexiosContext, FexiosPlugin } from '@/index.js'
+import type { FexiosHookHandler, FexiosPlugin } from '@/index.js'
 import { CookieJar } from './CookieJar.js'
 
 export * from './CookieJar.js'
 
-type CookieJarPluginState = {
-  onBeforeRequest: (ctx: any) => any
-  onAfterResponse: (ctx: any) => any
-}
-
-const COOKIE_JAR_PLUGIN_STATE = Symbol('fexios-plugin-cookie-jar-state')
+const COOKIE_JAR_PLUGIN_UNINSTALLER = Symbol(
+  'fexios-plugin-cookie-jar-uninstaller'
+)
 
 declare module '@/index.js' {
   interface Fexios {
@@ -25,7 +22,7 @@ export const pluginCookieJar: FexiosPlugin = {
     fx.cookieJar = cookieJar
 
     // Request interceptor: add cookies to request headers
-    const onBeforeRequest = (ctx: FexiosContext) => {
+    const onBeforeRequest: FexiosHookHandler<'beforeRequest'> = (ctx) => {
       if (!fx.cookieJar) {
         return
       }
@@ -47,7 +44,7 @@ export const pluginCookieJar: FexiosPlugin = {
     fx.on('beforeRequest', onBeforeRequest)
 
     // Response interceptor: parse Set-Cookie header
-    const onAfterResponse = (ctx: FexiosContext) => {
+    const onAfterResponse: FexiosHookHandler<'afterResponse'> = (ctx) => {
       if (!fx.cookieJar) {
         return
       }
@@ -79,22 +76,20 @@ export const pluginCookieJar: FexiosPlugin = {
       return ctx
     }
     fx.on('afterResponse', onAfterResponse)
-    ;(fx as any)[COOKIE_JAR_PLUGIN_STATE] = {
-      onBeforeRequest,
-      onAfterResponse,
-    } satisfies CookieJarPluginState
+
+    const uninstaller = () => {
+      fx.off('beforeRequest', onBeforeRequest)
+      fx.off('afterResponse', onAfterResponse)
+      fx.cookieJar = undefined
+    }
+    ;(fx as any)[COOKIE_JAR_PLUGIN_UNINSTALLER] = uninstaller as () => void
   },
   uninstall(fx) {
-    const state = (fx as any)[COOKIE_JAR_PLUGIN_STATE] as
-      | CookieJarPluginState
+    const uninstaller = (fx as any)[COOKIE_JAR_PLUGIN_UNINSTALLER] as
+      | (() => void)
       | undefined
-    if (state) {
-      fx.off('beforeRequest', state.onBeforeRequest as any)
-      fx.off('afterResponse', state.onAfterResponse as any)
-      try {
-        delete (fx as any)[COOKIE_JAR_PLUGIN_STATE]
-      } catch {}
+    if (typeof uninstaller === 'function') {
+      uninstaller()
     }
-    fx.cookieJar = undefined
   },
 }
