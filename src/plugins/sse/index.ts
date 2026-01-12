@@ -57,9 +57,15 @@ const normalizeSseURL = (
 async function waitForSseOpen(es: EventSource, delay: number) {
   // readyState: 0 = CONNECTING, 1 = OPEN, 2 = CLOSED
   if ((es as any).readyState === 1) return
+  if ((es as any).readyState === 2) {
+    throw new Error('SSE connection is already closed')
+  }
 
   await new Promise<void>((resolve, reject) => {
     let settled = false
+    // NOTE: declare timer BEFORE cleanup() to avoid TDZ when "open" fires synchronously
+    // in some mock/polyfill implementations.
+    let timer: ReturnType<typeof setTimeout> | undefined
 
     const handleOpen = () => {
       if (settled) return
@@ -72,7 +78,9 @@ async function waitForSseOpen(es: EventSource, delay: number) {
       if (settled) return
       settled = true
       cleanup()
-      reject(event)
+      reject(
+        new Error('SSE connection emitted error before it was fully opened')
+      )
     }
 
     const handleClose = () => {
@@ -83,7 +91,7 @@ async function waitForSseOpen(es: EventSource, delay: number) {
     }
 
     const cleanup = () => {
-      clearTimeout(timer)
+      if (timer) clearTimeout(timer)
       es.removeEventListener('open', handleOpen as any)
       es.removeEventListener('error', handleError as any)
 
@@ -108,7 +116,7 @@ async function waitForSseOpen(es: EventSource, delay: number) {
       // ignore: environments without a "close" event are expected to surface failures via "error"
     }
 
-    const timer =
+    timer =
       delay > 0
         ? setTimeout(() => {
             if (settled) return
@@ -121,7 +129,7 @@ async function waitForSseOpen(es: EventSource, delay: number) {
             }
             reject(new Error('opening SSE connection timed out'))
           }, delay)
-        : (undefined as unknown as ReturnType<typeof setTimeout>)
+        : undefined
   })
 }
 
@@ -159,7 +167,25 @@ export const pluginSSE: FexiosPlugin = {
         ;(fx as any).emit('sse:error', { ...ctx, event })
       })
 
-      await waitForSseOpen(es, ctx.timeout)
+      try {
+        await waitForSseOpen(es, ctx.timeout)
+      } catch (err: any) {
+        // Make sure we always reject with a FexiosError for consistent userland handling.
+        const message =
+          err instanceof Error
+            ? err.message
+            : typeof err === 'string'
+            ? err
+            : 'SSE connection failed to open'
+
+        const isTimeout =
+          message.includes('timed out') || message.includes('timeout')
+
+        throw new FexiosError(
+          isTimeout ? FexiosErrorCodes.TIMEOUT : FexiosErrorCodes.NETWORK_ERROR,
+          message
+        )
+      }
       return es
     }
 
