@@ -14,16 +14,14 @@
   - When triggered, core throws `FexiosError` with `code: 'FEATURE_MOVED_TO_PLUGIN'` and a message guiding users to install plugins.
 
 - **`responseType` no longer includes WS/SSE values**
+
   - `FexiosConfigs['responseType']` now only supports:
     - `'json' | 'text' | 'form' | 'blob' | 'arrayBuffer'`
 
-- **`fx.plugin(plugin)` return value changed**
-  - Previously, you may have relied on `fx.plugin(plugin)` returning a `Fexios` instance for chaining.
-  - Now, `await fx.plugin(plugin)` returns an **uninstall helper function** (to remove the plugin), not a `Fexios` instance.
-  - Migration:
-    - Use `await fx.plugin(plugin)` as a standalone call (no chaining).
-    - Or keep a reference:
-      - `const uninstall = await fx.plugin(plugin)`
+- `FexiosPlugin` now should be an object, with a required `name` and `install(fx)` function.
+  - `name`: a string that uniquely identifies the plugin.
+  - `install(fx)`: a function that installs the plugin.
+  - `uninstall(fx)` (optional): a function that will be called when the plugin is uninstalled. You can clean up side effects here.
 
 ### Migration
 
@@ -45,6 +43,10 @@
 ### Added
 
 - **Plugin lifecycle support**
+
   - `FexiosPlugin` now supports optional `uninstall(fx)` for cleanup.
   - `fx.plugin(plugin)` now returns an uninstall function (see breaking change above).
   - `fx.uninstall(pluginOrName)` is available to remove a plugin at runtime.
+
+- **`ctx.app` in lifecycle hooks**
+  - Core injects `ctx.app` (current `Fexios` instance) before any lifecycle hooks run, so plugins/users can access app-level info from the context.

@@ -103,6 +103,10 @@ export class Fexios extends CallableInstance<
       ctx = urlOrOptions as FexiosContext
     }
 
+    // Expose current app instance on context for plugins/users.
+    // Injected BEFORE any hooks (including beforeInit) run.
+    Reflect.defineProperty(ctx, 'app', { get: () => this })
+
     ctx = await this.emit('beforeInit', ctx)
     if ((ctx as any)[Fexios.FINAL_SYMBOL]) return ctx as any
 
@@ -255,6 +259,8 @@ export class Fexios extends CallableInstance<
       if (timer) clearTimeout(timer)
 
       ctx.rawResponse = rawResponse
+      this.emit('afterRawResponse', ctx)
+
       ctx.response = await createFexiosResponse(
         rawResponse,
         ctx.responseType,
@@ -548,7 +554,7 @@ export class Fexios extends CallableInstance<
   }
 
   private _plugins = new Map<string, FexiosPlugin>()
-  async plugin(plugin: FexiosPlugin) {
+  plugin(plugin: FexiosPlugin): Fexios {
     if (
       typeof plugin?.name === 'string' &&
       typeof plugin?.install === 'function'
@@ -557,15 +563,13 @@ export class Fexios extends CallableInstance<
         // already installed
         return this
       }
-      const fx = await plugin.install(this)
+      const fx = plugin.install(this)
       this._plugins.set(plugin.name, plugin)
       if (fx instanceof Fexios) {
         return fx
       }
     }
-    return () => {
-      this.uninstall(plugin)
-    }
+    return this
   }
   uninstall(plugin: FexiosPlugin | string) {
     if (typeof plugin === 'string') {
@@ -575,6 +579,7 @@ export class Fexios extends CallableInstance<
       plugin?.uninstall?.(this)
       this._plugins.delete(plugin.name)
     }
+    return this
   }
 
   // 版本弃子们.jpg

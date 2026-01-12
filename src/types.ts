@@ -97,6 +97,11 @@ export interface FexiosRequestOptions extends Omit<FexiosConfigs, 'headers'> {
 }
 
 export interface FexiosContext<T = any> extends FexiosRequestOptions {
+  /**
+   * The current Fexios instance handling this request.
+   * This is injected by core before any lifecycle hooks are executed.
+   */
+  readonly app: Fexios
   url: string
   rawRequest?: Request
   rawResponse?: Response
@@ -172,6 +177,7 @@ export interface FexiosLifecycleEventMap {
   beforeActualFetch: Required<
     Omit<FexiosContext, 'rawResponse' | 'response' | 'data'>
   >
+  afterRawResponse: Required<Omit<FexiosContext, 'response' | 'data'>>
   afterResponse: FexiosFinalContext
 }
 
@@ -226,6 +232,6 @@ export interface IFexiosResponse<T = any>
 
 export type FexiosPlugin = {
   name: string
-  install: (fx: Fexios) => Fexios | Promise<Fexios> | void
+  install: (fx: Fexios) => Fexios | void
   uninstall?: (fx: Fexios) => void
 }
