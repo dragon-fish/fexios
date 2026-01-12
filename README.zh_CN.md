@@ -109,7 +109,7 @@ export interface FexiosConfigs {
   credentials?: RequestInit['credentials']
   cache?: RequestInit['cache']
   mode?: RequestInit['mode']
-  responseType?: 'json' | 'blob' | 'text' | 'stream' | 'arrayBuffer'
+  responseType?: 'json' | 'text' | 'form' | 'blob' | 'arrayBuffer'
   fetch?: FetchLike
 }
 ```
@@ -123,12 +123,14 @@ export interface FexiosConfigs {
 ```ts
 const DEFAULT_CONFIGS = {
   baseURL: '',
-  credentials: 'same-origin',
-  headers: {
-    'content-type': 'application/json; charset=UTF-8',
-  },
+  timeout: 0,
+  credentials: undefined,
+  headers: {},
   query: {},
-  responseType: 'json',
+  responseType: undefined,
+  shouldThrow(response) {
+    return !response.ok
+  },
   fetch: globalThis.fetch,
 }
 ```
@@ -164,14 +166,31 @@ export interface FexiosRequestOptions extends Omit<FexiosConfigs, 'headers'> {
 **返回 {FexiosFinalContext}**
 
 ```ts
-export type FexiosFinalContext<T = any> = Omit<
-  FexiosContext<T>,
-  'rawResponse' | 'response' | 'data' | 'headers'
-> & {
-  rawResponse: Response
+export type FexiosFinalContext<T = any> = {
+  request: {
+    url: string
+    method?: string
+    headers: Headers | Record<string, any>
+    query: Record<string, any> | URLSearchParams
+    body?: any
+    rawRequest: Request
+    // ... 其他请求配置 ...
+  }
+  runtime: {
+    abortController?: AbortController
+    onProgress?: (progress: number, buffer?: Uint8Array) => void
+    customEnv?: any
+  }
+  /** 解析后的响应包装对象 */
   response: IFexiosResponse<T>
-  headers: Headers
-  data: T
+  /** 未读取的原始 Response */
+  rawResponse: Response
+  /** 常用快捷 getter */
+  readonly headers: Headers
+  readonly data: T
+  readonly responseType: 'json' | 'text' | 'form' | 'blob' | 'arrayBuffer'
+  readonly url: string
+  readonly rawRequest: Request
 }
 export interface IFexiosResponse<T = any> {
   ok: boolean
@@ -180,6 +199,7 @@ export interface IFexiosResponse<T = any> {
   headers: Headers
   rawResponse: Response
   data: T
+  responseType: 'json' | 'text' | 'form' | 'blob' | 'arrayBuffer'
 }
 ```
 
@@ -205,20 +225,20 @@ Fexios 采用简化的两阶段合并策略：
 
 此步骤仅在 `beforeInit` 钩子之后执行**一次**。
 
-- **URL**: 将 `ctx.url` 基于 `defaults.baseURL` 解析为完整路径。
-  - `defaults.baseURL` 中的 search params 会合并入 `ctx.url`。
-  - 优先级：`ctx.url` search params > `defaults.baseURL` search params。
-- **Query**: `defaults.query` 合并入 `ctx.query`。
-  - 优先级：`ctx.query` > `defaults.query`。
-- **Headers**: `defaults.headers` 合并入 `ctx.headers`。
-  - 优先级：`ctx.headers` > `defaults.headers`。
+- **URL**: 将 `ctx.request.url` 基于 `defaults.baseURL` 解析为完整路径。
+  - `defaults.baseURL` 中的 search params 会合并入 `ctx.request.url`。
+  - 优先级：`ctx.request.url` search params > `defaults.baseURL` search params。
+- **Query**: `defaults.query` 合并入 `ctx.request.query`。
+  - 优先级：`ctx.request.query` > `defaults.query`。
+- **Headers**: `defaults.headers` 合并入 `ctx.request.headers`。
+  - 优先级：`ctx.request.headers` > `defaults.headers`。
 
 #### 2. 生成最终请求（Finalize Request）
 
 此步骤在构建原生 `Request` 对象前（即 `beforeActualFetch` 之前）执行。
 
-- **Query**: 将 `ctx.query` 合并入最终 URL 的 search params。
-  - 优先级：`ctx.query` > URL search params（来自第一步或被钩子修改后的 URL）。
+- **Query**: 将 `ctx.request.query` 合并入最终 URL 的 search params。
+  - 优先级：`ctx.request.query` > URL search params（来自第一步或被钩子修改后的 URL）。
 - **Headers**: 构建最终的 Headers 对象。
 
 ### 合并规则
@@ -229,9 +249,9 @@ Fexios 采用简化的两阶段合并策略：
 
 ### 钩子注意事项
 
-- 在钩子（如 `beforeRequest`）中修改 `ctx.url` **不会**被解析回 `ctx.query`。它们在最终合并前是相互独立的实体。
-- 如果你在钩子中替换了 `ctx.url`，除非你手动保留，否则原 URL 中的 search params 将会丢失。
-- 如需在钩子中修改查询参数，建议直接操作 `ctx.query`。
+- 在钩子（如 `beforeRequest`）中修改 `ctx.request.url` **不会**被解析回 `ctx.request.query`。它们在最终合并前是相互独立的实体。
+- 如果你在钩子中替换了 `ctx.request.url`，除非你手动保留，否则原 URL 中的 search params 将会丢失。
+- 如需在钩子中修改查询参数，建议直接操作 `ctx.request.query`。
 
 ## 钩子
 
@@ -242,13 +262,23 @@ Fexios 采用简化的两阶段合并策略：
 ```ts
 export type FexiosHook<C = unknown> = (
   context: C
-) => AwaitAble<C | void | false>
-export interface FexiosContext<T = any> extends FexiosRequestOptions {
-  url: string // 可能在 beforeInit 后发生变化
-  rawRequest?: Request // 在 beforeRequest 中提供
-  rawResponse?: Response // 在 afterRequest 中提供
-  response?: IFexiosResponse // 在 afterRequest 中提供
-  data?: T // 在 afterRequest 中提供
+) => AwaitAble<C | void | false | Response>
+export interface FexiosContext<T = any> {
+  request: {
+    url: string // 可能在 beforeInit 后发生变化
+    query: Record<string, any> | URLSearchParams
+    headers: Headers | Record<string, any>
+    body?: any
+    rawRequest?: Request // 在 beforeActualFetch 中可用
+  }
+  runtime: {
+    abortController?: AbortController
+    onProgress?: (progress: number, buffer?: Uint8Array) => void
+    customEnv?: any
+  }
+  rawResponse?: Response // 在 afterRawResponse 中可用
+  response?: IFexiosResponse<T> // 在 afterResponse 中可用
+  // NOTE: 旧字段如 ctx.url / ctx.query 可能仍存在，但已 deprecated。
 }
 ```
 
@@ -260,11 +290,12 @@ export interface FexiosContext<T = any> extends FexiosRequestOptions {
 const fexios = new Fexios()
 
 fexios.on('beforeRequest', async (ctx) => {
-  ctx.headers.authorization = localStorage.getItem('token')
-  if (ctx.query.foo === 'bar') {
+  ;(ctx.request.headers as any).authorization = localStorage.getItem('token')
+  const q = ctx.request.query as any
+  if (q.foo === 'bar') {
     return false
   } else {
-    ctx.query.foo = 'baz'
+    q.foo = 'baz'
     return ctx
   }
   return ctx
@@ -289,11 +320,11 @@ JSON 主体已转换为 JSON 字符串。`Content-Type` 头已设置为主体的
 
 ### beforeActualFetch
 
-- `ctx.rawRequest`: `{Request}` 现在可用。
+- `ctx.request.rawRequest`: `{Request}` 现在可用。
 
 Request 实例已生成。
 
-此时，你不能再修改 `ctx.url`、`ctx.query`、`ctx.headers` 或 `ctx.body`（等）。除非你传递一个全新的 `Request` 来替换 `ctx.rawRequest`。
+此时，你不能再修改 `ctx.request.url`、`ctx.request.query`、`ctx.request.headers` 或 `ctx.request.body`（等）。除非你传递一个全新的 `Request` 来替换 `ctx.request.rawRequest`。
 
 ### afterResponse
 

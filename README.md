@@ -124,7 +124,7 @@ export interface FexiosConfigs {
   credentials?: RequestInit['credentials']
   cache?: RequestInit['cache']
   mode?: RequestInit['mode']
-  responseType?: 'json' | 'blob' | 'text' | 'stream' | 'arrayBuffer'
+  responseType?: 'json' | 'text' | 'form' | 'blob' | 'arrayBuffer'
   fetch?: FetchLike
 }
 ```
@@ -138,12 +138,14 @@ export interface FexiosConfigs {
 ```ts
 const DEFAULT_CONFIGS = {
   baseURL: '',
-  credentials: 'same-origin',
-  headers: {
-    'content-type': 'application/json; charset=UTF-8',
-  },
+  timeout: 0,
+  credentials: undefined,
+  headers: {},
   query: {},
-  responseType: 'json',
+  responseType: undefined,
+  shouldThrow(response) {
+    return !response.ok
+  },
   fetch: globalThis.fetch,
 }
 ```
@@ -179,14 +181,31 @@ export interface FexiosRequestOptions extends Omit<FexiosConfigs, 'headers'> {
 **returns {FexiosFinalContext}**
 
 ```ts
-export type FexiosFinalContext<T = any> = Omit<
-  FexiosContext<T>,
-  'rawResponse' | 'response' | 'data' | 'headers'
-> & {
-  rawResponse: Response
+export type FexiosFinalContext<T = any> = {
+  request: {
+    url: string
+    method?: string
+    headers: Headers | Record<string, any>
+    query: Record<string, any> | URLSearchParams
+    body?: any
+    rawRequest: Request
+    // ... other request configs ...
+  }
+  runtime: {
+    abortController?: AbortController
+    onProgress?: (progress: number, buffer?: Uint8Array) => void
+    customEnv?: any
+  }
+  /** Parsed response wrapper */
   response: IFexiosResponse<T>
-  headers: Headers
-  data: T
+  /** Unread original Response */
+  rawResponse: Response
+  /** Shortcut getters */
+  readonly headers: Headers
+  readonly data: T
+  readonly responseType: 'json' | 'text' | 'form' | 'blob' | 'arrayBuffer'
+  readonly url: string
+  readonly rawRequest: Request
 }
 export interface IFexiosResponse<T = any> {
   ok: boolean
@@ -195,6 +214,7 @@ export interface IFexiosResponse<T = any> {
   headers: Headers
   rawResponse: Response
   data: T
+  responseType: 'json' | 'text' | 'form' | 'blob' | 'arrayBuffer'
 }
 ```
 
@@ -220,20 +240,20 @@ Fexios uses a simplified 2-stage merge strategy:
 
 This happens only ONCE, immediately after the `beforeInit` hook.
 
-- **URL**: `ctx.url` is resolved against `defaults.baseURL`.
-  - Search params from `defaults.baseURL` are merged into `ctx.url`.
-  - Priority: `ctx.url` search params > `defaults.baseURL` search params.
-- **Query**: `defaults.query` is merged into `ctx.query`.
-  - Priority: `ctx.query` > `defaults.query`.
-- **Headers**: `defaults.headers` is merged into `ctx.headers`.
-  - Priority: `ctx.headers` > `defaults.headers`.
+- **URL**: `ctx.request.url` is resolved against `defaults.baseURL`.
+  - Search params from `defaults.baseURL` are merged into `ctx.request.url`.
+  - Priority: `ctx.request.url` search params > `defaults.baseURL` search params.
+- **Query**: `defaults.query` is merged into `ctx.request.query`.
+  - Priority: `ctx.request.query` > `defaults.query`.
+- **Headers**: `defaults.headers` is merged into `ctx.request.headers`.
+  - Priority: `ctx.request.headers` > `defaults.headers`.
 
 #### 2. Finalize Request (Before `beforeActualFetch`)
 
 This happens when constructing the native `Request` object.
 
-- **Query**: `ctx.query` is merged into the final URL's search params.
-  - Priority: `ctx.query` > URL search params (from step 1 or modified by hooks).
+- **Query**: `ctx.request.query` is merged into the final URL's search params.
+  - Priority: `ctx.request.query` > URL search params (from step 1 or modified by hooks).
 - **Headers**: Final headers are built.
 
 ### Merge Rules
@@ -244,9 +264,9 @@ This happens when constructing the native `Request` object.
 
 ### Note on Hooks
 
-- Modifications to `ctx.url` in hooks (e.g. `beforeRequest`) will **NOT** be parsed into `ctx.query`. They are treated as separate entities until the final merge.
-- If you replace `ctx.url` in a hook, you lose the original URL search params unless you manually preserve them.
-- To modify query parameters reliably in hooks, prefer operating on `ctx.query`.
+- Modifications to `ctx.request.url` in hooks (e.g. `beforeRequest`) will **NOT** be parsed into `ctx.request.query`. They are treated as separate entities until the final merge.
+- If you replace `ctx.request.url` in a hook, you lose the original URL search params unless you manually preserve them.
+- To modify query parameters reliably in hooks, prefer operating on `ctx.request.query`.
 
 ## Hooks
 
@@ -257,13 +277,23 @@ Return `false` to abort request immediately.
 ```ts
 export type FexiosHook<C = unknown> = (
   context: C
-) => AwaitAble<C | void | false>
-export interface FexiosContext<T = any> extends FexiosRequestOptions {
-  url: string // may changes after beforeInit
-  rawRequest?: Request // provide in beforeRequest
-  rawResponse?: Response // provide in afterRequest
-  response?: IFexiosResponse // provide in afterRequest
-  data?: T // provide in afterRequest
+) => AwaitAble<C | void | false | Response>
+export interface FexiosContext<T = any> {
+  request: {
+    url: string // may change after beforeInit
+    query: Record<string, any> | URLSearchParams
+    headers: Headers | Record<string, any>
+    body?: any
+    rawRequest?: Request // available in beforeActualFetch
+  }
+  runtime: {
+    abortController?: AbortController
+    onProgress?: (progress: number, buffer?: Uint8Array) => void
+    customEnv?: any
+  }
+  rawResponse?: Response // available in afterRawResponse
+  response?: IFexiosResponse<T> // available in afterResponse
+  // NOTE: legacy aliases like ctx.url / ctx.query may exist but are deprecated.
 }
 ```
 
@@ -275,11 +305,12 @@ export interface FexiosContext<T = any> extends FexiosRequestOptions {
 const fexios = new Fexios()
 
 fexios.on('beforeRequest', async (ctx) => {
-  ctx.headers.authorization = localStorage.getItem('token')
-  if (ctx.query.foo === 'bar') {
+  ;(ctx.request.headers as any).authorization = localStorage.getItem('token')
+  const q = ctx.request.query as any
+  if (q.foo === 'bar') {
     return false
   } else {
-    ctx.query.foo = 'baz'
+    q.foo = 'baz'
     return ctx
   }
   return ctx
@@ -304,11 +335,11 @@ JSON body has been transformed to JSON string. `Content-Type` header has been se
 
 ### beforeActualFetch
 
-- `ctx.rawRequest`: `{Request}` now available.
+- `ctx.request.rawRequest`: `{Request}` now available.
 
 The Request instance has been generated.
 
-At this time, you cannot modify the `ctx.url`, `ctx.query`, `ctx.headers` or `ctx.body` (etc.) anymore. Unless you pass a brand new `Request` to replace `ctx.rawRequest`.
+At this time, you cannot modify `ctx.request.url`, `ctx.request.query`, `ctx.request.headers` or `ctx.request.body` (etc.) anymore, unless you pass a brand new `Request` to replace `ctx.request.rawRequest`.
 
 ### afterResponse
 
