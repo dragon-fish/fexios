@@ -57,46 +57,71 @@ const normalizeSseURL = (
 async function waitForSseOpen(es: EventSource, delay: number) {
   // readyState: 0 = CONNECTING, 1 = OPEN, 2 = CLOSED
   if ((es as any).readyState === 1) return
+
   await new Promise<void>((resolve, reject) => {
-    const timer =
-      delay > 0
-        ? setTimeout(() => {
-            try {
-              es.close()
-            } catch {}
-            reject(
-              new FexiosError(
-                FexiosErrorCodes.TIMEOUT,
-                `EventSource connection timed out after ${delay}ms`
-              )
-            )
-          }, delay)
-        : undefined
+    let settled = false
 
-    const cleanup = () => {
-      if (timer) clearTimeout(timer)
-      es.removeEventListener('open', onOpen as any)
-      es.removeEventListener('error', onError as any)
-    }
-
-    const onOpen = () => {
+    const handleOpen = () => {
+      if (settled) return
+      settled = true
       cleanup()
       resolve()
     }
-    const onError = (event: Event) => {
+
+    const handleError = (event: Event) => {
+      if (settled) return
+      settled = true
       cleanup()
-      reject(
-        new FexiosError(
-          FexiosErrorCodes.NETWORK_ERROR,
-          `EventSource connection failed`,
-          undefined,
-          { cause: event }
-        )
-      )
+      reject(event)
     }
 
-    es.addEventListener('open', onOpen as any)
-    es.addEventListener('error', onError as any)
+    const handleClose = () => {
+      if (settled) return
+      settled = true
+      cleanup()
+      reject(new Error('SSE connection was closed before it was fully opened'))
+    }
+
+    const cleanup = () => {
+      clearTimeout(timer)
+      es.removeEventListener('open', handleOpen as any)
+      es.removeEventListener('error', handleError as any)
+
+      // Some environments expose a dedicated "close" event on EventSource,
+      // others surface a clean close via "error" instead. We defensively
+      // try to unregister the "close" listener when supported.
+      try {
+        es.removeEventListener('close', handleClose as any)
+      } catch {
+        // ignore: "close" not supported by this implementation
+      }
+    }
+
+    es.addEventListener('open', handleOpen as any)
+    es.addEventListener('error', handleError as any)
+
+    // If the platform exposes a dedicated "close" event (or maps it internally),
+    // listen for it so a clean close does not delay failure handling until timeout.
+    try {
+      es.addEventListener('close', handleClose as any)
+    } catch {
+      // ignore: environments without a "close" event are expected to surface failures via "error"
+    }
+
+    const timer =
+      delay > 0
+        ? setTimeout(() => {
+            if (settled) return
+            settled = true
+            cleanup()
+            try {
+              es.close()
+            } catch {
+              // ignore; connection may already be closed
+            }
+            reject(new Error('opening SSE connection timed out'))
+          }, delay)
+        : (undefined as unknown as ReturnType<typeof setTimeout>)
   })
 }
 
