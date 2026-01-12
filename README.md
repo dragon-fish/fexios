@@ -2,6 +2,11 @@
 
 # Fexios
 
+<img src="docs/logos/fexios-logo-horizontal.png" alt="Fexios Logo" width="200">
+
+[![npm version](https://img.shields.io/npm/v/fexios)](https://www.npmjs.com/package/fexios)
+[![npm downloads](https://img.shields.io/npm/dm/fexios)](https://www.npmjs.com/package/fexios)
+[![Unit test](https://github.com/dragon-fish/fexios/actions/workflows/unit-test.yml/badge.svg)](https://github.com/dragon-fish/fexios/actions/workflows/unit-test.yml)
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fdragon-fish%2Ffexios.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fdragon-fish%2Ffexios?ref=badge_shield)
 
 Fetch based HTTP client with similar API to axios for browser and Node.js
