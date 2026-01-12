@@ -19,9 +19,18 @@
     - `'json' | 'text' | 'form' | 'blob' | 'arrayBuffer'`
 
 - `FexiosPlugin` now should be an object, with a required `name` and `install(fx)` function.
+
   - `name`: a string that uniquely identifies the plugin.
   - `install(fx)`: a function that installs the plugin.
   - `uninstall(fx)` (optional): a function that will be called when the plugin is uninstalled. You can clean up side effects here.
+
+- **`FexiosContext` is restructured into `ctx.request`, `ctx.runtime`, and `ctx.response`**
+  - Lifecycle hook context is now a structured object:
+    - `ctx.request`: request configs and mutable request state (url/query/headers/body/...)
+    - `ctx.runtime`: runtime-only state (abortController/onProgress/customEnv/...)
+    - `ctx.response`: parsed `FexiosResponse` (available in `afterResponse` and final context)
+  - For normal user experience, final context still keeps shortcut getters:
+    - `ctx.data`, `ctx.headers`, `ctx.url`, `ctx.responseType`, `ctx.rawResponse`, `ctx.rawRequest`
 
 ### Migration
 
@@ -35,10 +44,20 @@
     - `fx.sse(url, options?) -> Promise<EventSource>`
 
 - **New hook namespaces for real-time features**
+
   - WebSocket hooks:
     - `websocket:beforeConnect`, `websocket:open`, `websocket:message`, `websocket:error`, `websocket:close`
   - SSE hooks:
     - `sse:beforeConnect`, `sse:open`, `sse:message`, `sse:error`, `sse:close`
+
+- **Migrate lifecycle hooks to new context structure**
+  - Replace request mutations:
+    - `ctx.url` -> `ctx.request.url`
+    - `ctx.query` -> `ctx.request.query`
+    - `ctx.headers` -> `ctx.request.headers`
+  - Replace runtime env:
+    - `ctx.customEnv` -> `ctx.runtime.customEnv`
+  - Parsed response wrapper remains `ctx.response` (type: `FexiosResponse`)
 
 ### Added
 

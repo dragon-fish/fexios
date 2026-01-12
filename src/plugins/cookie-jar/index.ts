@@ -26,15 +26,15 @@ export const pluginCookieJar: FexiosPlugin = {
       if (!fx.cookieJar) {
         return
       }
-      const url = new URL(ctx.url!)
+      const url = new URL(ctx.request.url!)
       const cookieHeader = fx.cookieJar.getCookieHeader(
         url.hostname,
         url.pathname
       )
 
       if (cookieHeader) {
-        ctx.headers = {
-          ...ctx.headers,
+        ctx.request.headers = {
+          ...(ctx.request.headers as any),
           Cookie: cookieHeader,
         }
       }
@@ -49,7 +49,7 @@ export const pluginCookieJar: FexiosPlugin = {
         return
       }
       const url = new URL(ctx.url!)
-      const headersAny = ctx.rawResponse?.headers as any
+      const headersAny = ctx.response.rawResponse?.headers as any
       const host = url.hostname
       const reqPath = url.pathname
 
@@ -67,7 +67,8 @@ export const pluginCookieJar: FexiosPlugin = {
           }
         }
       } else {
-        const setCookieHeader = ctx.rawResponse?.headers?.get('set-cookie')
+        const setCookieHeader =
+          ctx.response.rawResponse?.headers?.get('set-cookie')
         if (setCookieHeader) {
           fx.cookieJar.parseSetCookieHeader(setCookieHeader, host, reqPath)
         }

@@ -81,6 +81,103 @@ export class Fexios extends CallableInstance<
     )
   }
 
+  private attachLegacyAliases(ctx: FexiosContext) {
+    const req = () => ctx.request as any
+    const rt = () => ctx.runtime as any
+    const res = () => ctx as any
+
+    const define = (k: string, desc: PropertyDescriptor) => {
+      try {
+        Object.defineProperty(ctx as any, k, { configurable: true, ...desc })
+      } catch {
+        // ignore
+      }
+    }
+
+    // request aliases
+    define('url', {
+      get: () => req().url,
+      set: (v) => {
+        req().url = v?.toString?.() ?? String(v)
+      },
+    })
+    define('method', {
+      get: () => req().method,
+      set: (v) => (req().method = v),
+    })
+    define('headers', {
+      get: () => req().headers,
+      set: (v) => (req().headers = v),
+    })
+    define('query', { get: () => req().query, set: (v) => (req().query = v) })
+    define('body', { get: () => req().body, set: (v) => (req().body = v) })
+    define('baseURL', {
+      get: () => req().baseURL,
+      set: (v) => (req().baseURL = v),
+    })
+    define('timeout', {
+      get: () => req().timeout,
+      set: (v) => (req().timeout = v),
+    })
+    define('credentials', {
+      get: () => req().credentials,
+      set: (v) => (req().credentials = v),
+    })
+    define('cache', { get: () => req().cache, set: (v) => (req().cache = v) })
+    define('mode', { get: () => req().mode, set: (v) => (req().mode = v) })
+    define('fetch', { get: () => req().fetch, set: (v) => (req().fetch = v) })
+    define('shouldThrow', {
+      get: () => req().shouldThrow,
+      set: (v) => (req().shouldThrow = v),
+    })
+    define('responseType', {
+      get: () => req().responseType,
+      set: (v) => (req().responseType = v),
+    })
+
+    // runtime aliases
+    define('abortController', {
+      get: () => rt().abortController,
+      set: (v) => (rt().abortController = v),
+    })
+    define('onProgress', {
+      get: () => rt().onProgress,
+      set: (v) => (rt().onProgress = v),
+    })
+    define('customEnv', {
+      get: () => rt().customEnv,
+      set: (v) => (rt().customEnv = v),
+    })
+
+    // response aliases (pre-final)
+    define('rawRequest', {
+      get: () => req().rawRequest,
+      set: (v) => (req().rawRequest = v),
+    })
+    define('data', {
+      get: () =>
+        (ctx as any).response ? (ctx as any).response.data : undefined,
+      set: (v) => {
+        // allow legacy tests/users to mutate ctx.data in afterResponse (even though readonly in FinalContext)
+        if ((ctx as any).response) ((ctx as any).response as any).data = v
+      },
+    })
+  }
+
+  private finalizeContext<T = any>(ctx: FexiosContext<T>, fallbackURL: string) {
+    const response: any = (ctx as any).response
+    const rawResponse: any = response?.rawResponse ?? (ctx as any).rawResponse
+    const req: any = ctx.request as any
+
+    Object.defineProperties(ctx as any, {
+      url: { get: () => rawResponse?.url || fallbackURL },
+      data: { get: () => response!.data },
+      headers: { get: () => rawResponse!.headers },
+      responseType: { get: () => response!.responseType },
+      rawRequest: { get: () => req.rawRequest },
+    })
+  }
+
   async request<T = any>(
     url: string | URL,
     options?: Partial<FexiosRequestOptions>
@@ -95,35 +192,71 @@ export class Fexios extends CallableInstance<
       | (Partial<FexiosRequestOptions> & { url: string | URL }),
     options?: Partial<FexiosRequestOptions>
   ): Promise<FexiosFinalContext<T>> {
-    let ctx: FexiosContext = (options || {}) as FexiosContext
+    const thisApp = this
+    let reqInit: Partial<FexiosRequestOptions> = options || {}
 
     if (typeof urlOrOptions === 'string' || urlOrOptions instanceof URL) {
-      ctx.url = urlOrOptions.toString()
+      reqInit = { ...(options || {}), url: urlOrOptions }
     } else if (typeof urlOrOptions === 'object') {
-      ctx = urlOrOptions as FexiosContext
+      reqInit = urlOrOptions as any
     }
 
-    // Expose current app instance on context for plugins/users.
-    // Injected BEFORE any hooks (including beforeInit) run.
-    Reflect.defineProperty(ctx, 'app', { get: () => this })
+    const {
+      abortController: inputAbortController,
+      onProgress,
+      customEnv,
+      ...requestOnly
+    } = reqInit as any
+
+    let ctx: FexiosContext = {
+      get app() {
+        return thisApp
+      },
+      request: {
+        ...(requestOnly as any),
+        url: (reqInit.url as any)?.toString?.() ?? String(reqInit.url),
+      } as any,
+      runtime: {
+        abortController: inputAbortController,
+        onProgress,
+        customEnv,
+      },
+      response: undefined,
+      rawResponse: undefined,
+      // legacy fields are attached via defineProperty
+      url: '',
+      headers: {} as any,
+      query: {} as any,
+    } as any
+    this.attachLegacyAliases(ctx)
 
     ctx = await this.emit('beforeInit', ctx)
     if ((ctx as any)[Fexios.FINAL_SYMBOL]) return ctx as any
 
     // first normalization
     // Only apply defaults once after beforeInit
-    ctx = this.applyDefaults(ctx)
+    // 0) runtime defaults (customEnv)
+    if ('customEnv' in this.baseConfigs) {
+      ctx.runtime.customEnv = deepMerge(
+        {}, // ensure we don't mutate baseConfigs
+        (this.baseConfigs as any).customEnv,
+        ctx.runtime.customEnv
+      )
+    }
+
+    // 1) request defaults
+    ctx.request = this.applyDefaults(ctx.request as any)
 
     // method/body check
     if (
       Fexios.METHODS_WITHOUT_BODY.includes(
-        ctx.method?.toLocaleLowerCase() as FexiosMethods
+        (ctx.request.method as any)?.toLocaleLowerCase?.() as FexiosMethods
       ) &&
-      ctx.body
+      (ctx.request as any).body
     ) {
       throw new FexiosError(
         FexiosErrorCodes.BODY_NOT_ALLOWED,
-        `Request method "${ctx.method}" does not allow body`
+        `Request method "${ctx.request.method}" does not allow body`
       )
     }
 
@@ -134,37 +267,38 @@ export class Fexios extends CallableInstance<
     // resolve body & auto Content-Type
     let body: string | FormData | URLSearchParams | Blob | undefined
     const headerAutoPatch: Record<string, unknown> = {}
-    if (typeof ctx.body !== 'undefined' && ctx.body !== null) {
+    const req = ctx.request as any
+    if (typeof req.body !== 'undefined' && req.body !== null) {
       if (
-        ctx.body instanceof Blob ||
-        ctx.body instanceof FormData ||
-        ctx.body instanceof URLSearchParams
+        req.body instanceof Blob ||
+        req.body instanceof FormData ||
+        req.body instanceof URLSearchParams
       ) {
-        body = ctx.body
-      } else if (typeof ctx.body === 'object' && ctx.body !== null) {
-        body = JSON.stringify(ctx.body)
-        ctx.headers = this.mergeHeaders(ctx.headers, {
+        body = req.body
+      } else if (typeof req.body === 'object' && req.body !== null) {
+        body = JSON.stringify(req.body)
+        req.headers = this.mergeHeaders(req.headers, {
           'Content-Type': 'application/json',
         })
       } else {
-        body = ctx.body
+        body = req.body
       }
     }
 
     // if user didn't explicitly give content-type, auto patch it based on body
-    const optionsHeaders = FexiosHeaderBuilder.makeHeaders(ctx.headers || {})
+    const optionsHeaders = FexiosHeaderBuilder.makeHeaders(req.headers || {})
     if (!optionsHeaders.get('content-type') && body) {
       if (body instanceof FormData || body instanceof URLSearchParams) {
         // let browser set boundary automatically
         headerAutoPatch['content-type'] = null
-      } else if (typeof body === 'string' && typeof ctx.body === 'object') {
+      } else if (typeof body === 'string' && typeof req.body === 'object') {
         headerAutoPatch['content-type'] = 'application/json'
       } else if (body instanceof Blob) {
         headerAutoPatch['content-type'] =
           body.type || 'application/octet-stream'
       }
     }
-    ctx.body = body
+    req.body = body
 
     // afterBodyTransformed
     ctx = await this.emit('afterBodyTransformed', ctx)
@@ -172,7 +306,7 @@ export class Fexios extends CallableInstance<
 
     // build Request
     const abortController =
-      (ctx.abortController as AbortController | undefined) ??
+      (ctx.runtime.abortController as AbortController | undefined) ??
       (globalThis.AbortController ? new AbortController() : undefined)
 
     // 此时 ctx.url 应该已经是完整 URL (由 applyDefaults 保证)
@@ -180,50 +314,55 @@ export class Fexios extends CallableInstance<
     const fallback = globalThis.location?.href || 'http://localhost'
     // Resolve base URL to absolute
     const baseForRequest = new URL(
-      ctx.baseURL || this.baseConfigs.baseURL || fallback,
+      (ctx.request as any).baseURL || this.baseConfigs.baseURL || fallback,
       fallback
     )
-    const urlObjForRequest = new URL(ctx.url, baseForRequest)
+    const urlObjForRequest = new URL((ctx.request as any).url, baseForRequest)
 
     // 合并 ctx.query 到 URL searchParams (ctx.query 优先)
     const finalURLForRequest = FexiosQueryBuilder.makeURL(
       urlObjForRequest,
-      (ctx as any as FexiosContext).query,
+      (ctx.request as any).query,
       urlObjForRequest.hash // 保留 hash
     ).toString()
 
     const rawRequest = new Request(finalURLForRequest, {
-      method: ctx.method || 'GET',
-      credentials: ctx.credentials,
-      cache: ctx.cache,
-      mode: ctx.mode,
+      method: (ctx.request as any).method || 'GET',
+      credentials: (ctx.request as any).credentials,
+      cache: (ctx.request as any).cache,
+      mode: (ctx.request as any).mode,
       headers: FexiosHeaderBuilder.mergeHeaders(
         this.baseConfigs.headers,
-        ctx.headers || {},
+        (ctx.request as any).headers || {},
         headerAutoPatch
       ),
-      body: ctx.body as any,
+      body: (ctx.request as any).body as any,
       signal: abortController?.signal,
     })
-    ctx.rawRequest = rawRequest
+    ctx.request.rawRequest = rawRequest
 
     // beforeActualFetch
     ctx = await this.emit('beforeActualFetch', ctx)
     if ((ctx as any)[Fexios.FINAL_SYMBOL]) return ctx as any
 
-    const timeout = ctx.timeout ?? this.baseConfigs.timeout ?? 60 * 1000
-    const shouldThrow = ctx.shouldThrow ?? this.baseConfigs.shouldThrow
+    const timeout =
+      (ctx.request as any).timeout ?? this.baseConfigs.timeout ?? 60 * 1000
+    const shouldThrow =
+      (ctx.request as any).shouldThrow ?? this.baseConfigs.shouldThrow
 
     // WebSocket / SSE are moved to plugins in the next major version.
     // Keep a helpful runtime error for legacy usage.
-    if (ctx.url.startsWith('ws') || (ctx.responseType as any) === 'ws') {
+    if (
+      (ctx.request as any).url.startsWith('ws') ||
+      ((ctx.request as any).responseType as any) === 'ws'
+    ) {
       throw new FexiosError(
         FexiosErrorCodes.FEATURE_MOVED_TO_PLUGIN,
         `WebSocket support has been moved to plugins. Use "fexios/plugins" and call fx.ws() instead.`,
         ctx
       )
     }
-    if ((ctx.responseType as any) === 'stream') {
+    if (((ctx.request as any).responseType as any) === 'stream') {
       throw new FexiosError(
         FexiosErrorCodes.FEATURE_MOVED_TO_PLUGIN,
         `SSE support has been moved to plugins. Use "fexios/plugins" and call fx.sse() instead.`,
@@ -243,18 +382,25 @@ export class Fexios extends CallableInstance<
             : undefined
       }
 
-      const fetch = ctx.fetch || this.baseConfigs.fetch || globalThis.fetch
-      const rawResponse = await fetch(ctx.rawRequest!).catch((err) => {
-        if (timer) clearTimeout(timer)
-        if (abortController?.signal.aborted) {
+      const fetch =
+        (ctx.request as any).fetch || this.baseConfigs.fetch || globalThis.fetch
+      const rawResponse = await fetch(ctx.request.rawRequest!).catch(
+        (err: any) => {
+          if (timer) clearTimeout(timer)
+          if (abortController?.signal.aborted) {
+            throw new FexiosError(
+              FexiosErrorCodes.TIMEOUT,
+              `Request timed out after ${timeout}ms`,
+              ctx
+            )
+          }
           throw new FexiosError(
-            FexiosErrorCodes.TIMEOUT,
-            `Request timed out after ${timeout}ms`,
+            FexiosErrorCodes.NETWORK_ERROR,
+            err.message,
             ctx
           )
         }
-        throw new FexiosError(FexiosErrorCodes.NETWORK_ERROR, err.message, ctx)
-      })
+      )
 
       if (timer) clearTimeout(timer)
 
@@ -263,9 +409,9 @@ export class Fexios extends CallableInstance<
 
       ctx.response = await createFexiosResponse(
         rawResponse,
-        ctx.responseType,
+        (ctx.request as any).responseType,
         (progress, buffer) => {
-          options?.onProgress?.(progress, buffer)
+          ctx.runtime.onProgress?.(progress, buffer)
         },
         shouldThrow,
         timeout
@@ -273,12 +419,7 @@ export class Fexios extends CallableInstance<
       // Ensure ctx.rawResponse always points to ctx.response.rawResponse (the unread original Response).
       ctx.rawResponse = ctx.response.rawResponse
 
-      Object.defineProperties(ctx, {
-        url: { get: () => ctx.rawResponse?.url || finalURLForRequest },
-        data: { get: () => ctx.response!.data },
-        headers: { get: () => ctx.rawResponse!.headers },
-        responseType: { get: () => ctx.response!.responseType },
-      })
+      this.finalizeContext(ctx, finalURLForRequest)
 
       return this.emit('afterResponse', ctx) as any
     } catch (error) {
@@ -290,18 +431,8 @@ export class Fexios extends CallableInstance<
   mergeQueries = FexiosQueryBuilder.mergeQueries
   mergeHeaders = FexiosHeaderBuilder.mergeHeaders
 
-  private applyDefaults(ctx: FexiosContext): FexiosContext {
-    const c = ctx as FexiosContext
-
-    // 0. Inherit customEnv from baseConfigs
-    // Priority: ctx.customEnv > baseConfigs.customEnv
-    if ('customEnv' in this.baseConfigs) {
-      c.customEnv = deepMerge(
-        {}, // ensure we don't mutate baseConfigs
-        (this.baseConfigs as any).customEnv,
-        c.customEnv
-      )
-    }
+  private applyDefaults(ctx: any): any {
+    const c = ctx as any
 
     const fallback = globalThis.location?.href || 'http://localhost'
 
@@ -380,23 +511,37 @@ export class Fexios extends CallableInstance<
     if (hooks.length === 0) return ctx
 
     const shortCircuit = async (baseCtx: any, raw: Response): Promise<any> => {
-      const finalCtx: any = { ...baseCtx, rawResponse: raw }
+      const finalCtx: any = baseCtx
+      finalCtx.rawResponse = raw
+      // Ensure rawRequest exists even when short-circuited before actual fetch.
+      if (!finalCtx.request?.rawRequest) {
+        try {
+          finalCtx.request.rawRequest = new Request(finalCtx.request.url, {
+            method: finalCtx.request.method || 'GET',
+            headers: finalCtx.request.headers as any,
+            body: finalCtx.request.body as any,
+          })
+        } catch {
+          // ignore
+        }
+      }
+
       const response = await createFexiosResponse(
         raw,
-        (baseCtx as FexiosContext).responseType,
+        (baseCtx as any).request?.responseType,
         (progress, buffer) =>
-          (baseCtx as FexiosContext).onProgress?.(progress, buffer),
-        (baseCtx as FexiosContext).shouldThrow ?? this.baseConfigs.shouldThrow,
-        (baseCtx as FexiosContext).timeout ??
+          (baseCtx as any).runtime?.onProgress?.(progress, buffer),
+        (baseCtx as any).request?.shouldThrow ?? this.baseConfigs.shouldThrow,
+        (baseCtx as any).request?.timeout ??
           this.baseConfigs.timeout ??
           60 * 1000
       )
       finalCtx.response = response
       // Keep the same invariant as normal request:
-      // ctx.rawResponse === ctx.response.rawResponse (unread original Response).
+      // rawResponse === response.rawResponse (unread original Response).
       finalCtx.rawResponse = response.rawResponse
-      finalCtx.data = response.data
-      finalCtx.headers = response.headers
+
+      this.finalizeContext(finalCtx, raw.url || '')
 
       if (event !== 'afterResponse') {
         const after = (await this.emit('afterResponse', finalCtx)) as any
