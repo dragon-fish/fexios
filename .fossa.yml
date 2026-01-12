@@ -1,0 +1,7 @@
+version: 3
+
+# FOSSA CLI config
+# Keep this file free of secrets; provide auth via env vars (e.g. FOSSA_API_KEY).
+paths:
+  exclude:
+    - docs/**

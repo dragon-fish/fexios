@@ -400,4 +400,11 @@ Official plugins:
 >
 > Copyright (c) 2023 机智的小鱼君 (A.K.A. Dragon-Fish)
 
+> Fexios' logo is licensed under the Creative Commons
+> Attribution-ShareAlike 4.0 International License (CC BY-SA 4.0).
+>
+> Copyright (c) 2025 dragon-fish
+>
+> This license applies ONLY to the logo files in `docs/logos/` directory.
+
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fdragon-fish%2Ffexios.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Fdragon-fish%2Ffexios?ref=badge_large)
