@@ -14,6 +14,7 @@ import { pluginXXX } from 'fexios/plugins'
 ## Official plugins
 
 - **Cookie Jar**: [`docs/plugins/cookie-jar.md`](cookie-jar.md)
+- **Post Form**: [`docs/plugins/post-form.md`](post-form.md)
 - **SSE (EventSource)**: [`docs/plugins/sse.md`](sse.md)
 - **WebSocket**: [`docs/plugins/websocket.md`](websocket.md)
 
@@ -30,7 +31,10 @@ export const authPlugin: FexiosPlugin = {
   name: 'auth-plugin',
   install(fx) {
     fx.on('beforeRequest', (ctx) => {
-      ctx.headers = { ...ctx.headers, Authorization: 'Bearer token' }
+      ctx.request.headers = {
+        ...(ctx.request.headers as any),
+        Authorization: 'Bearer token',
+      }
       return ctx
     })
   },
