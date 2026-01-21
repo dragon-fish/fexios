@@ -262,12 +262,16 @@ Fexios 采用简化的两阶段合并策略：
 
 你可以在钩子回调中修改上下文，然后将其作为全新的上下文 ™ 返回。
 
-返回 `false` 立即中止请求。
+- 返回 `false` 立即中止请求。
+- 返回 `Response` 或 `FexiosResponse` 对象以短路请求（跳过实际网络请求）。
+- 返回 `Promise<FexiosFinalContext>`（例如来自另一个 `fx.request()`）以替换当前请求流程。
 
 ```ts
 export type FexiosHook<C = unknown> = (
   context: C
-) => AwaitAble<C | void | false | Response>
+) => AwaitAble<
+  C | void | false | Response | FexiosResponse | FexiosFinalContext
+>
 export interface FexiosContext<T = any> {
   request: {
     url: string // 可能在 beforeInit 后发生变化
@@ -278,7 +282,6 @@ export interface FexiosContext<T = any> {
   }
   runtime: {
     abortController?: AbortController
-    onProgress?: (progress: number, buffer?: Uint8Array) => void
     customEnv?: any
   }
   rawResponse?: Response // 在 afterRawResponse 中可用

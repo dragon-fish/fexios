@@ -277,12 +277,16 @@ This happens when constructing the native `Request` object.
 
 You can modify context in hooks' callback then return it as a brand new context™.
 
-Return `false` to abort request immediately.
+- Return `false` to abort request immediately.
+- Return a `Response` or `FexiosResponse` object to short-circuit the request (skip actual fetch).
+- Return a `Promise<FexiosFinalContext>` (e.g. from another `fx.request()`) to replace the current request flow.
 
 ```ts
 export type FexiosHook<C = unknown> = (
   context: C
-) => AwaitAble<C | void | false | Response>
+) => AwaitAble<
+  C | void | false | Response | FexiosResponse | FexiosFinalContext
+>
 export interface FexiosContext<T = any> {
   request: {
     url: string // may change after beforeInit
@@ -293,7 +297,6 @@ export interface FexiosContext<T = any> {
   }
   runtime: {
     abortController?: AbortController
-    onProgress?: (progress: number, buffer?: Uint8Array) => void
     customEnv?: any
   }
   rawResponse?: Response // available in afterRawResponse
