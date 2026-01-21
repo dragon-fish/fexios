@@ -19,6 +19,7 @@ import {
   FexiosErrorCodes,
   FexiosHeaderBuilder,
   FexiosQueryBuilder,
+  FexiosResponse,
 } from './models/index.js'
 import { deepMerge, isPlainObject, CallableInstance } from './utils/index.js'
 
@@ -29,7 +30,7 @@ import { deepMerge, isPlainObject, CallableInstance } from './utils/index.js'
 export class Fexios extends CallableInstance<
   [
     string | URL | (Partial<FexiosRequestOptions> & { url: string | URL }),
-    Partial<FexiosRequestOptions>?
+    Partial<FexiosRequestOptions>?,
   ],
   Promise<FexiosFinalContext<any>>
 > {
@@ -140,10 +141,6 @@ export class Fexios extends CallableInstance<
       get: () => rt().abortController,
       set: (v) => (rt().abortController = v),
     })
-    define('onProgress', {
-      get: () => rt().onProgress,
-      set: (v) => (rt().onProgress = v),
-    })
     define('customEnv', {
       get: () => rt().customEnv,
       set: (v) => (rt().customEnv = v),
@@ -203,7 +200,6 @@ export class Fexios extends CallableInstance<
 
     const {
       abortController: inputAbortController,
-      onProgress,
       customEnv,
       ...requestOnly
     } = reqInit as any
@@ -218,7 +214,6 @@ export class Fexios extends CallableInstance<
       } as any,
       runtime: {
         abortController: inputAbortController,
-        onProgress,
         customEnv,
       },
       response: undefined,
@@ -411,9 +406,6 @@ export class Fexios extends CallableInstance<
       ctx.response = await createFexiosResponse(
         rawResponse,
         (ctx.request as any).responseType,
-        (progress, buffer) => {
-          ctx.runtime.onProgress?.(progress, buffer)
-        },
         shouldThrow,
         timeout
       )
@@ -501,6 +493,71 @@ export class Fexios extends CallableInstance<
     }
   }
 
+  private isFinalContextLike(v: any): v is FexiosFinalContext<any> {
+    if (!v || typeof v !== 'object') return false
+    const req = (v as any).request
+    const res = (v as any).response
+    const raw = (v as any).rawResponse
+    if (!req || !res || !raw) return false
+    if (typeof req.url !== 'string') return false
+    return (
+      raw instanceof Response ||
+      res?.rawResponse instanceof Response ||
+      res?.rawResponse?.constructor?.name === 'Response'
+    )
+  }
+
+  private async resolveShortCircuit(
+    ctx: any,
+    responseOrRaw: FexiosResponse<any> | Response,
+    event: FexiosLifecycleEvents
+  ): Promise<any> {
+    const finalCtx: any = ctx
+    let response: FexiosResponse<any>
+
+    if (responseOrRaw instanceof FexiosResponse) {
+      response = responseOrRaw
+      finalCtx.rawResponse = response.rawResponse
+    } else {
+      // It is a raw Response
+      finalCtx.rawResponse = responseOrRaw
+      response = await createFexiosResponse(
+        responseOrRaw,
+        (ctx as any).request?.responseType,
+        (ctx as any).request?.shouldThrow ?? this.baseConfigs.shouldThrow,
+        (ctx as any).request?.timeout ?? this.baseConfigs.timeout ?? 60 * 1000
+      )
+    }
+
+    finalCtx.response = response
+    // Keep the same invariant: rawResponse === response.rawResponse
+    finalCtx.rawResponse = response.rawResponse
+
+    // Ensure rawRequest exists even when short-circuited before actual fetch
+    if (!finalCtx.request?.rawRequest) {
+      try {
+        finalCtx.request.rawRequest = new Request(finalCtx.request.url, {
+          method: finalCtx.request.method || 'GET',
+          headers: finalCtx.request.headers as any,
+          body: finalCtx.request.body as any,
+        })
+      } catch {
+        // ignore
+      }
+    }
+
+    this.finalizeContext(finalCtx, response.rawResponse?.url || '')
+
+    if (event !== 'afterResponse') {
+      const after = (await this.emit('afterResponse', finalCtx)) as any
+      ;(after as any)[Fexios.FINAL_SYMBOL] = true
+      return after
+    } else {
+      ;(finalCtx as any)[Fexios.FINAL_SYMBOL] = true
+      return finalCtx
+    }
+  }
+
   async emit<E extends FexiosLifecycleEvents, C = FexiosLifecycleEventMap[E]>(
     event: E,
     ctx: C,
@@ -511,55 +568,13 @@ export class Fexios extends CallableInstance<
     const hooks = this.hooks.filter((h) => h.event === event)
     if (hooks.length === 0) return ctx
 
-    const shortCircuit = async (baseCtx: any, raw: Response): Promise<any> => {
-      const finalCtx: any = baseCtx
-      finalCtx.rawResponse = raw
-      // Ensure rawRequest exists even when short-circuited before actual fetch.
-      if (!finalCtx.request?.rawRequest) {
-        try {
-          finalCtx.request.rawRequest = new Request(finalCtx.request.url, {
-            method: finalCtx.request.method || 'GET',
-            headers: finalCtx.request.headers as any,
-            body: finalCtx.request.body as any,
-          })
-        } catch {
-          // ignore
-        }
-      }
-
-      const response = await createFexiosResponse(
-        raw,
-        (baseCtx as any).request?.responseType,
-        (progress, buffer) =>
-          (baseCtx as any).runtime?.onProgress?.(progress, buffer),
-        (baseCtx as any).request?.shouldThrow ?? this.baseConfigs.shouldThrow,
-        (baseCtx as any).request?.timeout ??
-          this.baseConfigs.timeout ??
-          60 * 1000
-      )
-      finalCtx.response = response
-      // Keep the same invariant as normal request:
-      // rawResponse === response.rawResponse (unread original Response).
-      finalCtx.rawResponse = response.rawResponse
-
-      this.finalizeContext(finalCtx, raw.url || '')
-
-      if (event !== 'afterResponse') {
-        const after = (await this.emit('afterResponse', finalCtx)) as any
-        ;(after as any)[Fexios.FINAL_SYMBOL] = true
-        return after
-      } else {
-        ;(finalCtx as any)[Fexios.FINAL_SYMBOL] = true
-        return finalCtx
-      }
-    }
-
     for (let i = 0; i < hooks.length; i++) {
       const hook = hooks[i]
       const hookName = `${String(event)}#${
         hook.action.name || `anonymous#${i}`
       }`
 
+      // Mark context to detect if hook returns the same object or a new one
       const marker = Symbol('FEXIOS_HOOK_CTX_MARK')
       try {
         ;(ctx as any)[marker] = marker
@@ -579,9 +594,20 @@ export class Fexios extends CallableInstance<
         )
       }
 
+      // Allow hook to return an already-finalized context
+      if (this.isFinalContextLike(result)) {
+        ;(result as any)[Fexios.FINAL_SYMBOL] = true
+        return result as any
+      }
+
+      // Allow hook to return a parsed FexiosResponse directly
+      if (result instanceof FexiosResponse) {
+        return this.resolveShortCircuit(ctx, result, event)
+      }
+
       if (result instanceof Response) {
         if (opts.shouldHandleShortCircuitResponse !== false) {
-          return shortCircuit(ctx, result)
+          return this.resolveShortCircuit(ctx, result, event)
         }
         ;(ctx as any).rawResponse = result
       } else if (
@@ -589,6 +615,7 @@ export class Fexios extends CallableInstance<
         typeof result === 'object' &&
         (result as any)[marker] === marker
       ) {
+        // Hook returned the same context object (or compatible)
         ctx = result as C
       } else {
         // no-op

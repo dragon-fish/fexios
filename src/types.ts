@@ -98,17 +98,11 @@ export interface FexiosRequestOptions extends Omit<FexiosConfigs, 'headers'> {
    * In v6, this will be moved to `ctx.runtime.abortController` in lifecycle hooks.
    */
   abortController?: AbortController
-  /**
-   * Progress callback for streaming responses.
-   * @note
-   * In v6, this will be moved to `ctx.runtime.onProgress` in lifecycle hooks.
-   */
-  onProgress?: (progress: number, buffer?: Uint8Array) => void
 }
 
 export type FexiosRequestContext = Omit<
   FexiosRequestOptions,
-  'url' | 'abortController' | 'onProgress' | 'customEnv'
+  'url' | 'abortController' | 'customEnv'
 > & {
   /** Request URL, may be relative before normalization */
   url: string
@@ -121,7 +115,6 @@ export type FexiosRequestContext = Omit<
 
 export type FexiosRuntimeContext = {
   abortController?: AbortController
-  onProgress?: (progress: number, buffer?: Uint8Array) => void
   /**
    * Custom environment variables, can be any value.
    * Useful for passing data between hooks and plugins.
@@ -169,8 +162,6 @@ export interface FexiosContext<T = any> {
   body?: FexiosRequestOptions['body']
   /** @deprecated Use `ctx.runtime.abortController` */
   abortController?: AbortController
-  /** @deprecated Use `ctx.runtime.onProgress` */
-  onProgress?: (progress: number, buffer?: Uint8Array) => void
   /** @deprecated Use `ctx.runtime.customEnv` */
   customEnv?: any
   /** @deprecated Use `ctx.request.rawRequest` */
@@ -211,7 +202,9 @@ export type FexiosFinalContext<T = any> = Omit<
 
 export type FexiosHook<C = unknown> = (
   context: C
-) => AwaitAble<C | void | false | Response>
+) => AwaitAble<
+  C | void | false | Response | IFexiosResponse<any> | FexiosFinalContext<any>
+>
 
 export interface FexiosHookStore {
   event: FexiosLifecycleEvents
@@ -251,11 +244,12 @@ export interface FexiosInterceptors {
 
 // Util type for create fexios hooks
 // const onBeforeRequest: FexiosHookHandler<'beforeRequest'> = (ctx) => {...}
-export type FexiosHookHandler<E extends FexiosLifecycleEvents> = FexiosHook<
-  FexiosLifecycleEventMap[E]
-> extends (ctx: FexiosLifecycleEventMap[E]) => any
-  ? (ctx: FexiosLifecycleEventMap[E]) => any
-  : never
+export type FexiosHookHandler<E extends FexiosLifecycleEvents> =
+  FexiosHook<FexiosLifecycleEventMap[E]> extends (
+    ctx: FexiosLifecycleEventMap[E]
+  ) => any
+    ? (ctx: FexiosLifecycleEventMap[E]) => any
+    : never
 
 type LowerAndUppercase<T extends string> = Lowercase<T> | Uppercase<T>
 
@@ -282,11 +276,10 @@ type ShortcutWithBody = <T = any>(
 ) => Promise<FexiosFinalContext<T>>
 
 // Forward declaration for circular dependency
-export interface IFexiosResponse<T = any>
-  extends Pick<
-    Response,
-    'ok' | 'status' | 'statusText' | 'headers' | 'url' | 'redirected'
-  > {
+export interface IFexiosResponse<T = any> extends Pick<
+  Response,
+  'ok' | 'status' | 'statusText' | 'headers' | 'url' | 'redirected'
+> {
   readonly rawResponse: Response
   readonly data: T
   readonly responseType: FexiosConfigs['responseType']

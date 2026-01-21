@@ -154,6 +154,68 @@ export namespace FexiosQueryBuilder {
     return u
   }
 
+  const DEEP_KEY_RE = /\[([^\]]*)\]/g
+
+  function parseKey(key: string): { path: string[]; forceArray: boolean } {
+    if (!key.includes('[')) return { path: [key], forceArray: false }
+
+    const base = key.slice(0, key.indexOf('['))
+    const parts: string[] = [base]
+
+    DEEP_KEY_RE.lastIndex = 0
+    let m: RegExpExecArray | null
+    let forceArray = false
+    let lastWasEmpty = false
+
+    while ((m = DEEP_KEY_RE.exec(key))) {
+      if (m[1] === '') {
+        forceArray = true
+        lastWasEmpty = true
+      } else {
+        parts.push(m[1])
+        lastWasEmpty = false
+      }
+    }
+
+    if (forceArray && lastWasEmpty) {
+      parts[parts.length - 1] = parts[parts.length - 1] + '[]'
+    }
+
+    return { path: parts, forceArray }
+  }
+
+  function setDeep(
+    obj: any,
+    path: string[],
+    value: string,
+    forceArray: boolean
+  ) {
+    let cur = obj
+    // Iterate until the second to last element
+    for (let i = 0; i < path.length - 1; i++) {
+      const k = path[i]
+      if (
+        cur[k] === undefined ||
+        typeof cur[k] !== 'object' ||
+        Array.isArray(cur[k])
+      ) {
+        cur[k] = {}
+      }
+      cur = cur[k]
+    }
+
+    // Handle the last element
+    const k = path[path.length - 1]
+    if (cur[k] === undefined) {
+      cur[k] = forceArray ? [value] : value
+    } else if (Array.isArray(cur[k])) {
+      cur[k].push(value)
+    } else {
+      // Current is a single value, convert to array
+      cur[k] = [cur[k], value]
+    }
+  }
+
   /**
    * Convert URLSearchParams back to a plain object
    *
@@ -191,62 +253,6 @@ export namespace FexiosQueryBuilder {
     }
 
     const output: any = {}
-
-    const parseKey = (key: string): { path: string[]; forceArray: boolean } => {
-      if (!key.includes('[')) return { path: [key], forceArray: false }
-      const base = key.slice(0, key.indexOf('['))
-      const parts: string[] = [base]
-      const re = /\[([^\]]*)\]/g
-      let m: RegExpExecArray | null
-      let forceArray = false
-      let lastWasEmpty = false
-      while ((m = re.exec(key))) {
-        if (m[1] === '') {
-          forceArray = true
-          lastWasEmpty = true
-        } else {
-          parts.push(m[1])
-          lastWasEmpty = false
-        }
-      }
-      if (forceArray && lastWasEmpty) {
-        parts[parts.length - 1] = parts[parts.length - 1] + '[]'
-      }
-      return { path: parts, forceArray }
-    }
-
-    const setDeep = (
-      obj: any,
-      path: string[],
-      value: string,
-      forceArray: boolean
-    ) => {
-      let cur = obj
-      for (let i = 0; i < path.length; i++) {
-        const k = path[i]
-        const last = i === path.length - 1
-        if (last) {
-          if (forceArray) {
-            if (cur[k] === undefined) cur[k] = [value]
-            else if (Array.isArray(cur[k])) cur[k].push(value)
-            else cur[k] = [cur[k], value]
-          } else {
-            if (cur[k] === undefined) cur[k] = value
-            else if (Array.isArray(cur[k])) cur[k].push(value)
-            else cur[k] = [cur[k], value]
-          }
-        } else {
-          if (
-            cur[k] === undefined ||
-            typeof cur[k] !== 'object' ||
-            Array.isArray(cur[k])
-          ) {
-            cur[k] = {}
-          }
-          cur = cur[k]
-        }
-      }
-    }
 
     for (const [rawKey, val] of input.entries()) {
       const { path, forceArray } = parseKey(String(rawKey))

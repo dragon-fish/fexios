@@ -31,51 +31,6 @@ export class FexiosResponse<T = unknown> implements IFexiosResponse<T> {
   readonly redirected!: boolean
 }
 
-const concatUint8Arrays = (parts: Uint8Array[]) => {
-  const total = parts.reduce((n, p) => n + p.length, 0)
-  const out = new Uint8Array(total)
-  let off = 0
-  for (const p of parts) {
-    out.set(p, off)
-    off += p.length
-  }
-  return out
-}
-
-async function readBody(
-  stream: ReadableStream<Uint8Array>,
-  contentLength: number,
-  onProgress?: (p: number, buf: Uint8Array) => void
-) {
-  const reader = stream.getReader()
-  if (!reader) {
-    throw new FexiosError(
-      FexiosErrorCodes.NO_BODY_READER,
-      'Failed to get ReadableStream from response body'
-    )
-  }
-
-  const chunks: Uint8Array[] = []
-  let received = 0
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      chunks.push(value)
-      received += value.length
-      if (onProgress && contentLength > 0)
-        onProgress(received / contentLength, concatUint8Arrays(chunks))
-    }
-  } finally {
-    reader.releaseLock?.()
-  }
-
-  const data = concatUint8Arrays(chunks)
-  onProgress?.(1, data)
-  return data
-}
-
 const guessFexiosResponseType = (
   contentType: string
 ): IFexiosResponse['responseType'] => {
@@ -113,7 +68,6 @@ const guessFexiosResponseType = (
 export async function createFexiosResponse<T = any>(
   rawResponse: Response,
   expectedType?: FexiosConfigs['responseType'],
-  onProgress?: (progress: number, buffer?: Uint8Array) => void,
   shouldThrow?: (response: FexiosResponse<any>) => boolean | void,
   timeout?: number
 ): Promise<FexiosResponse<T>> {
@@ -126,8 +80,6 @@ export async function createFexiosResponse<T = any>(
   const decodeResponse = rawResponse.clone()
   const contentType =
     rawResponse.headers.get('content-type')?.toLowerCase() ?? ''
-  const lenHeader = rawResponse.headers.get('content-length')
-  const total = lenHeader ? Number(lenHeader) : 0
 
   // Check for upgrade headers for websocket / SSE
   const upgrade = rawResponse.headers.get('upgrade')?.toLowerCase()
@@ -160,55 +112,43 @@ export async function createFexiosResponse<T = any>(
 
   // Note: core no longer auto-detects websocket/sse here.
 
-  // decode helpers
-  const charset = /\bcharset=([^;]+)/i.exec(contentType)?.[1]?.trim() || 'utf-8'
-  const decoder = new TextDecoder(charset)
-
   let data: any
 
   try {
     if (resolvedType === 'form') {
       // Resolve form data by fetch itself (no progress support)
       data = await decodeResponse.formData()
-    } else {
-      const bytes = await readBody(decodeResponse.body!, total, onProgress)
-      if (resolvedType === 'arrayBuffer') {
-        data = bytes.buffer.slice(
-          bytes.byteOffset,
-          bytes.byteOffset + bytes.byteLength
-        )
-      } else if (resolvedType === 'blob') {
-        data = new Blob([bytes], {
-          type: contentType || 'application/octet-stream',
-        })
-      } else if (resolvedType === 'text') {
-        const text = decoder.decode(bytes)
-        // auto-detect: if no explicit expected type and text looks like JSON, try to parse as JSON
-        if (!expectedType) {
-          const trimmed = text.trim()
-          if (
-            (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
-            (trimmed.startsWith('[') && trimmed.endsWith(']'))
-          ) {
-            try {
-              data = JSON.parse(trimmed)
-              resolvedType = 'json'
-            } catch {
-              data = text
-            }
-          } else {
+    } else if (resolvedType === 'arrayBuffer') {
+      data = await decodeResponse.arrayBuffer()
+    } else if (resolvedType === 'blob') {
+      data = await decodeResponse.blob()
+    } else if (resolvedType === 'json') {
+      const text = await decodeResponse.text()
+      data = text ? JSON.parse(text) : null
+    } else if (resolvedType === 'text') {
+      const text = await decodeResponse.text()
+      if (!expectedType) {
+        const trimmed = text.trim()
+        if (
+          (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+          (trimmed.startsWith('[') && trimmed.endsWith(']'))
+        ) {
+          try {
+            data = JSON.parse(trimmed)
+            resolvedType = 'json'
+          } catch {
             data = text
           }
         } else {
           data = text
         }
-      } else if (resolvedType === 'json') {
-        const text = decoder.decode(bytes)
-        data = text.length ? JSON.parse(text) : null
       } else {
-        // theoretically should not reach here, unless user provides a expectedType out of scope
-        data = bytes
+        data = text
       }
+    } else {
+      // Fallback or unknown type, return Uint8Array as implied by original 'else { data = bytes }'
+      const ab = await decodeResponse.arrayBuffer()
+      data = new Uint8Array(ab)
     }
   } catch (e) {
     // if parsing fails, try to read as plain text as last resort
