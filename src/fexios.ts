@@ -582,6 +582,12 @@ export class Fexios extends CallableInstance<
 
       const result = await hook.action.call(this, ctx as any)
 
+      const isSameContext = result === ctx
+      const hasMarker =
+        result &&
+        typeof result === 'object' &&
+        (result as any)[marker] === marker
+
       try {
         delete (ctx as any)[marker]
       } catch {}
@@ -594,7 +600,14 @@ export class Fexios extends CallableInstance<
         )
       }
 
-      // Allow hook to return an already-finalized context
+      // Check for marker/same object FIRST to allow flowing through
+      if (isSameContext || hasMarker) {
+        // Hook returned the same context object (or compatible)
+        ctx = result as C
+        continue
+      }
+
+      // Allow hook to return an already-finalized context (short-circuit)
       if (this.isFinalContextLike(result)) {
         ;(result as any)[Fexios.FINAL_SYMBOL] = true
         return result as any
@@ -610,13 +623,6 @@ export class Fexios extends CallableInstance<
           return this.resolveShortCircuit(ctx, result, event)
         }
         ;(ctx as any).rawResponse = result
-      } else if (
-        result &&
-        typeof result === 'object' &&
-        (result as any)[marker] === marker
-      ) {
-        // Hook returned the same context object (or compatible)
-        ctx = result as C
       } else {
         // no-op
       }
