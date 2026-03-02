@@ -61,7 +61,10 @@ Legacy v5 flat aliases (`ctx.url`, `ctx.headers`, etc.) exist on FexiosContext a
 
 ### Key Source Files
 
-- `src/fexios.ts` — Main class: lifecycle execution, hook processing, request building, response parsing (~750 lines)
+- `src/fexios.ts` — Main class: thin orchestration shell (~470 lines), delegates to internals
+- `src/internals/context.ts` — Legacy alias attachment and context finalization
+- `src/internals/hooks.ts` — Hook execution engine, short-circuit resolution, duck-type checks
+- `src/internals/request-helpers.ts` — URL resolution, body transform, query merge, defaults application
 - `src/types.ts` — All type definitions and interfaces
 - `src/models/response.ts` — `FexiosResponse` wrapper with auto-parsed body
 - `src/models/errors.ts` — Error classes and error code enum
@@ -89,6 +92,17 @@ Multiple entry points via `exports` field in package.json:
 - Coverage enabled via `@vitest/coverage-v8`, reports to `.test_reports/`
 - Test timeout: 10 seconds
 - Path alias: `@/*` maps to `./src/*`
+
+## Release
+
+Auto-publish via GitHub Actions (`.github/workflows/npm-publish.yml`):
+
+1. Bump version in `package.json`
+2. Commit: `chore: bump version to x.y.z`
+3. Create tag: `git tag x.y.z` — **no `v` prefix**
+4. Push: `git push && git push --tags`
+
+GitHub Actions will validate that the tag matches `package.json` version, then build, test, and publish to npm with provenance. Manual trigger via `workflow_dispatch` is also supported.
 
 ## Code Conventions
 
