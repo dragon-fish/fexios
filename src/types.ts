@@ -5,12 +5,24 @@ import { FexiosResponse } from './models/response.js'
  * Type definitions for Fexios
  */
 
+// Utilties
 export type AwaitAble<T = unknown> = Promise<T> | T
 
 export type FetchLike = (
   input: Request | string | URL,
   init?: RequestInit
 ) => Promise<Response>
+
+type AutocompletePrimitiveBaseType<T> = T extends string
+  ? string
+  : T extends number
+    ? number
+    : T extends boolean
+      ? boolean
+      : never
+export type Autocomplete<T> =
+  | T
+  | (AutocompletePrimitiveBaseType<T> & Record<never, never>)
 
 export interface FexiosConfigs {
   baseURL: string | URL
@@ -76,7 +88,7 @@ export interface FexiosConfigs {
 
 export interface FexiosRequestOptions extends Omit<FexiosConfigs, 'headers'> {
   url?: string | URL
-  method?: FexiosMethods
+  method?: Autocomplete<FexiosMethods>
   /**
    * Request headers, its value can be:
    * - `null`      - to remove the header

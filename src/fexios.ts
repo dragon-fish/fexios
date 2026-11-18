@@ -12,6 +12,7 @@ import type {
   FexiosRequestShortcut,
   FexiosLifecycleEventMap,
   FexiosPlugin,
+  FetchLike,
 } from './types.js'
 import {
   createFexiosResponse,
@@ -245,7 +246,7 @@ export class Fexios extends CallableInstance<
             : undefined
       }
 
-      const fetch =
+      const fetch: FetchLike =
         (ctx.request as any).fetch || this.baseConfigs.fetch || globalThis.fetch
       const rawResponse = await fetch(ctx.request.rawRequest!).catch(
         (err: any) => {

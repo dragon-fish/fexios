@@ -10,22 +10,22 @@ Fexios is a lightweight (~6KB gzipped) fetch-based HTTP client library with an a
 
 ```bash
 # Build (parallel: unbuild for ESM/CJS + vite for UMD)
-npm run build
+pnpm run build
 
 # Run all tests
-npm run test
+pnpm run test
 
 # Run a single test file
-npx vitest run ./test/core.spec.ts
+pnpm vitest run ./test/core.spec.ts
 
 # Run tests matching a pattern
-npx vitest run -t "hook"
+pnpm vitest run -t "hook"
 
 # Clean build output
-npm run clean
+pnpm run clean
 
 # Preview test coverage report
-npm run review
+pnpm run review
 ```
 
 ## Build Outputs

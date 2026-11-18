@@ -46,18 +46,13 @@ const normalizeSseURL = (
   query?: Record<string, any> | URLSearchParams
 ) => {
   // SSE uses http(s)
-  return FexiosQueryBuilder.makeURL(
-    url,
-    query as any,
-    undefined,
-    baseURL
-  ).toString()
+  return FexiosQueryBuilder.makeURL(url, query, undefined, baseURL).toString()
 }
 
 async function waitForSseOpen(es: EventSource, delay: number) {
   // readyState: 0 = CONNECTING, 1 = OPEN, 2 = CLOSED
-  if ((es as any).readyState === 1) return
-  if ((es as any).readyState === 2) {
+  if (es.readyState === 1) return
+  if (es.readyState === 2) {
     throw new Error('SSE connection is already closed')
   }
 
@@ -92,26 +87,26 @@ async function waitForSseOpen(es: EventSource, delay: number) {
 
     const cleanup = () => {
       if (timer) clearTimeout(timer)
-      es.removeEventListener('open', handleOpen as any)
-      es.removeEventListener('error', handleError as any)
+      es.removeEventListener('open', handleOpen)
+      es.removeEventListener('error', handleError)
 
       // Some environments expose a dedicated "close" event on EventSource,
       // others surface a clean close via "error" instead. We defensively
       // try to unregister the "close" listener when supported.
       try {
-        es.removeEventListener('close', handleClose as any)
+        es.removeEventListener('close', handleClose)
       } catch {
         // ignore: "close" not supported by this implementation
       }
     }
 
-    es.addEventListener('open', handleOpen as any)
-    es.addEventListener('error', handleError as any)
+    es.addEventListener('open', handleOpen)
+    es.addEventListener('error', handleError)
 
     // If the platform exposes a dedicated "close" event (or maps it internally),
     // listen for it so a clean close does not delay failure handling until timeout.
     try {
-      es.addEventListener('close', handleClose as any)
+      es.addEventListener('close', handleClose)
     } catch {
       // ignore: environments without a "close" event are expected to surface failures via "error"
     }
@@ -149,7 +144,7 @@ export const pluginSSE: FexiosPlugin = {
         timeout: delay,
       }
 
-      const ctx = (await (fx as any).emit(
+      const ctx = (await fx.emit(
         'sse:beforeConnect',
         baseCtx
       )) as FexiosSSEContext
@@ -158,13 +153,13 @@ export const pluginSSE: FexiosPlugin = {
       ctx.eventSource = es
 
       es.addEventListener('open', (event) => {
-        ;(fx as any).emit('sse:open', { ...ctx, event })
+        fx.emit('sse:open', { ...ctx, event })
       })
       es.addEventListener('message', (event) => {
-        ;(fx as any).emit('sse:message', { ...ctx, event: event as any })
+        fx.emit('sse:message', { ...ctx, event: event })
       })
       es.addEventListener('error', (event) => {
-        ;(fx as any).emit('sse:error', { ...ctx, event })
+        fx.emit('sse:error', { ...ctx, event })
       })
 
       try {
@@ -175,8 +170,8 @@ export const pluginSSE: FexiosPlugin = {
           err instanceof Error
             ? err.message
             : typeof err === 'string'
-            ? err
-            : 'SSE connection failed to open'
+              ? err
+              : 'SSE connection failed to open'
 
         const isTimeout =
           message.includes('timed out') || message.includes('timeout')
