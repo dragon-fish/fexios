@@ -161,6 +161,8 @@ const DEFAULT_CONFIGS = {
 
 `fexios.request<T>(config): Promise<FexiosResponse<T>>`
 
+A positive `timeout` sets a deadline in milliseconds from the start of fetch through response body decoding. A value of `0` disables the deadline. A timeout rejects with `TIMEOUT` and affects only that request. Callers can share an `abortController` to cancel multiple requests. Caller cancellation rejects with `ABORTED` and preserves the abort reason in `error.cause`.
+
 <details>
 
 <summary>FexiosRequestOptions</summary>

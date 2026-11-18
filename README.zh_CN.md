@@ -144,6 +144,8 @@ const DEFAULT_CONFIGS = {
 
 ### Fexios#request(config: FexiosRequestOptions)
 
+`timeout` 为正数时，以毫秒为单位限制从发起 fetch 到响应正文解析完成的时间。设为 `0` 可关闭超时。超时抛出 `TIMEOUT`，且只影响当前请求。多个请求可共用一个 `abortController`，由调用方统一取消。主动取消抛出 `ABORTED`，取消原因保存在 `error.cause`。
+
 `fexios.request<T>(config): Promise<FexiosResponse<T>>`
 
 <details>

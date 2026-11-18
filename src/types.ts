@@ -26,6 +26,7 @@ export type Autocomplete<T> =
 
 export interface FexiosConfigs {
   baseURL: string | URL
+  /** Milliseconds from fetch through response body decoding. Defaults to 0 (disabled). */
   timeout: number
   /**
    * Query parameters, its value can be:
@@ -105,9 +106,8 @@ export interface FexiosRequestOptions extends Omit<FexiosConfigs, 'headers'> {
    */
   customEnv?: any
   /**
-   * AbortController for cancellation/timeout control.
-   * @note
-   * In v6, this will be moved to `ctx.runtime.abortController` in lifecycle hooks.
+   * Caller-owned controller for cancellation. Available as
+   * `ctx.runtime.abortController` in lifecycle hooks.
    */
   abortController?: AbortController
 }

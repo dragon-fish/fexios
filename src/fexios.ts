@@ -184,9 +184,10 @@ export class Fexios extends CallableInstance<
     if ((ctx as any)[Fexios.FINAL_SYMBOL]) return ctx as any
 
     // build Request
-    const abortController =
-      (ctx.runtime.abortController as AbortController | undefined) ??
-      (globalThis.AbortController ? new AbortController() : undefined)
+    const requestController = globalThis.AbortController
+      ? new AbortController()
+      : undefined
+    const callerSignal = ctx.runtime.abortController?.signal
 
     const finalURLForRequest = buildFinalURL(ctx, this.baseConfigs)
 
@@ -201,7 +202,7 @@ export class Fexios extends CallableInstance<
         headerAutoPatch
       ),
       body: (ctx.request as any).body as any,
-      signal: abortController?.signal,
+      signal: callerSignal ?? requestController?.signal,
     })
     ctx.request.rawRequest = rawRequest
 
@@ -209,8 +210,7 @@ export class Fexios extends CallableInstance<
     ctx = await this.emit('beforeActualFetch', ctx)
     if ((ctx as any)[Fexios.FINAL_SYMBOL]) return ctx as any
 
-    const timeout =
-      (ctx.request as any).timeout ?? this.baseConfigs.timeout ?? 60 * 1000
+    const timeout = ctx.request.timeout ?? this.baseConfigs.timeout ?? 60 * 1000
     const shouldThrow =
       (ctx.request as any).shouldThrow ?? this.baseConfigs.shouldThrow
 
@@ -234,60 +234,95 @@ export class Fexios extends CallableInstance<
       )
     }
 
-    // —— fetch + timeout —— //
+    let request = ctx.request.rawRequest!
+    const cancellationSources = new Set<AbortSignal>()
+    if (callerSignal) cancellationSources.add(callerSignal)
+    // A hook can replace the Request with one that carries its own signal.
+    if (request !== rawRequest) cancellationSources.add(request.signal)
+    if (requestController && (callerSignal || request !== rawRequest)) {
+      request = new Request(request, { signal: requestController.signal })
+      ctx.request.rawRequest = request
+    }
+
+    let cancellationError: FexiosError | undefined
     let timer: ReturnType<typeof setTimeout> | undefined
-    try {
-      if (abortController) {
-        timer =
-          timeout > 0
-            ? setTimeout(() => {
-                abortController.abort()
-              }, timeout)
-            : undefined
+    const unsubscribe: (() => void)[] = []
+    const cancellation = new Promise<never>((_, reject) => {
+      const cancel = (error: FexiosError) => {
+        if (cancellationError) return
+        cancellationError = error
+        reject(error)
+        requestController?.abort(error)
       }
 
-      const fetch: FetchLike =
-        (ctx.request as any).fetch || this.baseConfigs.fetch || globalThis.fetch
-      const rawResponse = await fetch(ctx.request.rawRequest!).catch(
-        (err: any) => {
-          if (timer) clearTimeout(timer)
-          if (abortController?.signal.aborted) {
-            throw new FexiosError(
+      for (const signal of cancellationSources) {
+        const onAbort = () =>
+          cancel(
+            new FexiosError(FexiosErrorCodes.ABORTED, 'Request aborted', ctx, {
+              cause: signal.reason,
+            })
+          )
+        if (signal.aborted) {
+          onAbort()
+          return
+        }
+        signal.addEventListener('abort', onAbort, { once: true })
+        unsubscribe.push(() => signal.removeEventListener('abort', onAbort))
+      }
+
+      if (timeout > 0) {
+        timer = setTimeout(() => {
+          cancel(
+            new FexiosError(
               FexiosErrorCodes.TIMEOUT,
               `Request timed out after ${timeout}ms`,
               ctx
             )
-          }
-          throw new FexiosError(
-            FexiosErrorCodes.NETWORK_ERROR,
-            err.message,
-            ctx
           )
-        }
-      )
+        }, timeout)
+      }
+    })
 
-      if (timer) clearTimeout(timer)
+    const fetchAndDecode = async () => {
+      if (cancellationError) throw cancellationError
+      const fetch: FetchLike =
+        ctx.request.fetch || this.baseConfigs.fetch || globalThis.fetch
+      const rawResponse = await fetch(request).catch((error: Error) => {
+        if (cancellationError) throw cancellationError
+        throw new FexiosError(
+          FexiosErrorCodes.NETWORK_ERROR,
+          error.message,
+          ctx
+        )
+      })
 
+      if (cancellationError) throw cancellationError
       ctx.rawResponse = rawResponse
       await this.emit('afterRawResponse', ctx)
-      if ((ctx as any)[Fexios.FINAL_SYMBOL]) return ctx as any
+      if (cancellationError) throw cancellationError
+      if ((ctx as any)[Fexios.FINAL_SYMBOL]) return
 
-      ctx.response = await createFexiosResponse(
+      const response = await createFexiosResponse(
         rawResponse,
-        (ctx.request as any).responseType,
-        shouldThrow,
-        timeout
+        ctx.request.responseType,
+        shouldThrow
       )
-      // Ensure ctx.rawResponse always points to ctx.response.rawResponse (the unread original Response).
-      ctx.rawResponse = ctx.response.rawResponse
-
-      finalizeContext(ctx, finalURLForRequest)
-
-      return this.emit('afterResponse', ctx) as any
-    } catch (error) {
-      if (timer) clearTimeout(timer)
-      throw error
+      if (cancellationError) throw cancellationError
+      ctx.response = response
+      ctx.rawResponse = response.rawResponse
     }
+
+    try {
+      // Custom fetch functions and response streams may ignore the request signal.
+      await Promise.race([cancellation, fetchAndDecode()])
+    } finally {
+      clearTimeout(timer)
+      unsubscribe.forEach((remove) => remove())
+    }
+    if ((ctx as any)[Fexios.FINAL_SYMBOL]) return ctx as any
+
+    finalizeContext(ctx, finalURLForRequest)
+    return this.emit('afterResponse', ctx) as any
   }
 
   mergeQueries = FexiosQueryBuilder.mergeQueries
